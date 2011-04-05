@@ -1,3 +1,6 @@
 *.beam
 .eunit
 deps/*
+ebin
+rel/mfmn
+dev

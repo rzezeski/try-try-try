@@ -1,10 +1,26 @@
 Riak Core, The vnode
 ==========
 
-DANGER - DANGER - DANGER
+In this post I want to discuss the _virtual node_ or _vnode_ for short.  It is the fundamental unit of both work and storage in a Riak Core system and without understanding it you can't successfully build an application with Riak Core.
+
+First, Why Riak Core
 ----------
 
-This post is unfinished and what you currently see here may or may not be part of the final version.  Best to wait until I'm done (tomorrow hopefully) as I might change every word.  Sometimes I write something 7 times before I like it...I'm just weird like that.  You've been warned.
+Before digging into the vnode I want to spend a little time on answering _why_ you may want to use Riak Core.  Specifically, I want to attempt to address Wilson MacGyver's question on the riak-users mailing list.
+
+> The topic I'd really like coverage is, what can riak-core do that other stack including erlang+otp can't do.
+
+This is a great question, and while I hestitate to make any direct comparsions (for fear of selling something else short) I'd like to talk about what I think makes Riak Core an attractive solution.
+
+The key thing to understand is that Riak Core is essentially an implementation of [Dynamo](http://www.allthingsdistributed.com/2007/10/amazons_dynamo.html).  In fact, from what I understand, Riak Core started it's life on [Andy Gross's](https://github.com/argv0) laptop on a plane ride recently after he had read the Dynamo paper.  In the Dynamo paper there are several data structures and techniques laid out that Amazon used to build _highly available_, robust systems that also met certain _SLAs_ 99.9% of the time.  In the paper they framed these technologies around a key-value store but they are more general than that.
+
+The two main data structures are:
+
+* The _ring_: The ring (which is really a combination of consistent hashing and vnodes) is at the heart of Riak Core's distribution.  It's what routes requests and data across the cluster.
+
+* _vector clocks_: How do you order events in realtion to each other if you can't trust your time source or don't have one?  You use vector clocks.  In short, vector clocks can be used to detect parallel versions of your data that don't have a common ancestor much like a version control system can tell you when you have a merge conflict.
+
+
 
 I feel like there has been a growing interest in riak_core recently and I thought I'd share an example that I coded up as a reaction to an interview question posed to me recently.  Current examples of [Riak Core](https://github.com/basho/riak_core)  in action include [Riak KV](https://github.com/basho/riak_kv) (also just called Riak), [Riak Search](https://github.com/basho/riak_search) and [BashoBanjo](https://github.com/rklophaus/BashoBanjo).  The first two are actual products created and supported by Basho and the third is just something really cool that Rusty Klophaus did.  None of these examples seem to illustrate exactly how to use Riak Core.  I'm hoping this example can help fill that void.
 

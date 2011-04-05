@@ -1,6 +1,11 @@
 Riak Core, The vnode
 ==========
 
+DANGER - DANGER - DANGER
+----------
+
+This post is unfinished and what you currently see here may or may not be part of the final version.  Best to wait until I'm done (tomorrow hopefully) as I might change every word.  Sometimes I write something 7 times before I like it...I'm just weird like that.  You've been warned.
+
 I feel like there has been a growing interest in riak_core recently and I thought I'd share an example that I coded up as a reaction to an interview question posed to me recently.  Current examples of [Riak Core](https://github.com/basho/riak_core)  in action include [Riak KV](https://github.com/basho/riak_kv) (also just called Riak), [Riak Search](https://github.com/basho/riak_search) and [BashoBanjo](https://github.com/rklophaus/BashoBanjo).  The first two are actual products created and supported by Basho and the third is just something really cool that Rusty Klophaus did.  None of these examples seem to illustrate exactly how to use Riak Core.  I'm hoping this example can help fill that void.
 
 An Interview Question

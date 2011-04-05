@@ -1,7 +1,7 @@
 Riak Core, The vnode
 ==========
 
-In this post I want to discuss the _virtual node_ or _vnode_ for short.  It is the fundamental unit of both work and storage in a Riak Core system and without understanding it you can't successfully build an application with Riak Core.
+In this post I want to discuss the _virtual node_ or _vnode_ for short.  It is the fundamental unit of both work and storage in Riak Core and without understanding it you can't successfully build an application atop Riak Core.
 
 First, Why Riak Core
 ----------
@@ -12,28 +12,32 @@ Before digging into the vnode I want to spend a little time on answering _why_ y
 
 This is a great question, and while I hestitate to make any direct comparsions (for fear of selling something else short) I'd like to talk about what I think makes Riak Core an attractive solution.
 
-The key thing to understand is that Riak Core is essentially an implementation of [Dynamo](http://www.allthingsdistributed.com/2007/10/amazons_dynamo.html).  In fact, from what I understand, Riak Core started it's life on [Andy Gross's](https://github.com/argv0) laptop on a plane ride recently after he had read the Dynamo paper.  In the Dynamo paper there are several data structures and techniques laid out that Amazon used to build _highly available_, robust systems that also met certain _SLAs_ 99.9% of the time.  In the paper they framed these technologies around a key-value store but they are more general than that.
+The key thing to understand is that Riak Core is essentially an implementation of [Dynamo](http://www.allthingsdistributed.com/2007/10/amazons_dynamo.html).  In fact, from what I understand, Riak Core started it's life on [Andy Gross's](https://github.com/argv0) laptop on a plane ride recently after he had read the Dynamo paper.  In the Dynamo paper there are several data structures and techniques laid out that Amazon used to build _highly available_, robust systems that also met certain _SLAs_ 99.9% of the time.  In the paper the authors framed these technologies around a key-value store but they are more general than that.
 
 The two main data structures are:
 
 * The _ring_: The ring (which is really a combination of consistent hashing and vnodes) is at the heart of Riak Core's distribution.  It's what routes requests and data across the cluster.
 
-* _vector clocks_: How do you order events in realtion to each other if you can't trust your time source or don't have one?  You use vector clocks.  In short, vector clocks can be used to detect parallel versions of your data that don't have a common ancestor much like a version control system can tell you when you have a merge conflict.
+* _vector clocks_: How do you order events in realtion to each other if you can't trust your time source or don't have one?  You use vector clocks.  In short, Riak Core's vector clock mechanism is almost like having a built-in version control system that will automatically merge forks that it can and alert you to conflicts otherwise.
 
+There are also various processes that are alive in a Riak Core cluster; two important ones being _handoff_ and _coordination_.
 
+* _handoff_: Riak Core implements something called _hinted handoff_.  The "hinted" part means that each parition carries a hint with it that indicates the phsyical node it should be on.  Periodically, the system checks this hint and if the partition is determined to belong to another node it will begin the handoff process.  Which is to say the current node that hosts the parition will start sending data for that partition to the _target_ node now responsible for it.  Handoff occurs when you add a node to the cluster or if a node has restarted after crashing.  Handoff does **NOT** occur when the node crashes.
 
-I feel like there has been a growing interest in riak_core recently and I thought I'd share an example that I coded up as a reaction to an interview question posed to me recently.  Current examples of [Riak Core](https://github.com/basho/riak_core)  in action include [Riak KV](https://github.com/basho/riak_kv) (also just called Riak), [Riak Search](https://github.com/basho/riak_search) and [BashoBanjo](https://github.com/rklophaus/BashoBanjo).  The first two are actual products created and supported by Basho and the third is just something really cool that Rusty Klophaus did.  None of these examples seem to illustrate exactly how to use Riak Core.  I'm hoping this example can help fill that void.
+* _coordination_: The coordinator is responsible for routing requests and satisfying the [CAP](http://www.julianbrowne.com/article/viewer/brewers-cap-theorem) properties _N_, _R_, and _W_.
+
+So these are just some of the things that Riak Core _helps_ you with.  You must keep in mind that Riak Core doesn't necessairly just magically do everything for you.  Much like a _behavior_ Erlang behavior it's providing a _container_ for your application to run in, but you have to provide the funcionality.  In some cases, like coordination, Riak Core gives you some functions to aid in the process but you have to write most of the logic.  My point is that Riak Core still requires some work on your part to get all thoose cool Dynamo features.  That's why I'm writing this series of blog posts.  To help both myself and others understand just what it takes to build a system on Riak Core.
+
 
 An Interview Question
 ----------
 
-I was recently posed with an interview question, over skype, that went something like this:
+I was recently posed with an interview question that went something like this:
 
 > You have N machines writing syslog events to a server somewhere.  Each incoming entry should be compared to a list of regular expressions on the server.  Each regexp has a corresponding event that should be triggered if a match occurs.  Said event will write/udpate a value somewhere that can be queried by interested parties.  How do you implement it?
 
-Did I already say that this was completely over skype?  I had to talk out my entire solution.  I probably asked to hear the problem over again about seven different times.  It's amazing how much you take a whiteboard for granted until you can't use one.  Luckily, my interviewers were calm and patient and I ended up giving a half decent solution to the problem I thought.  They hired me, at least :)
+I thought this could make a good fit for solving with Riak Core because it's not completely trivial but it's not bloated with complexity either (it could be, but I'm going to keep it simple here).
 
-During the interview I realized this could actually be a great fit for Riak Core.  I didn't get to share this idea with the interviewers that day but that's okay because today I'll share it  with all you wounderful people that are curious about Riak Core.  Let's get to it, then.
 
 What's a vnode, Anyways?
 ----------
@@ -75,3 +79,10 @@ In this case there are a few more callbacks you need to implement:
 * `handle_handoff_command/3`: Called by the container when a command comes in **while** the vnode is in the middle of a handoff.
 
 * `handoff_starting/2`, `handoff_cancelled/1`, `handoff_finished/2`: Various lifecycle callbacks that we won't need in this example.
+
+
+Other Examples
+----------
+
+Current examples of [Riak Core](https://github.com/basho/riak_core)  in action include [Riak KV](https://github.com/basho/riak_kv) (also just called Riak), [Riak Search](https://github.com/basho/riak_search) and [BashoBanjo](https://github.com/rklophaus/BashoBanjo).  The first two are actual products created and supported by Basho and the third is just something really cool that Rusty Klophaus did.
+

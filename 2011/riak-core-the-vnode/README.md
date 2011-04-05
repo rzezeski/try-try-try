@@ -42,13 +42,26 @@ I thought this could make a good fit for solving with Riak Core because it's not
 What's a vnode, Anyways?
 ----------
 
-The name _vnode_ is short for _virtual node_.  This is in contrast to a regular _node_ which is just another name for a physical machine.  For all intents and purposes a vnode is simply a virtual machine that runs on a real machine.  No, not a virutal machine like the JVM, but instead more like a virtual host in a webserver.  The vnode acts as a unit of work or storage (or both) which makes it the fundamental measure of concurrency in Riak Core.  A vnode's job is to handle requests and Riak Core provides the tools for distributing those requests across the vnodes.  You code to the interface provided by the vnode behavior and Riak Core does most of the rest of the work.  I'll try to clarify all these points as I go along.
+* A _vnode_ is a _virtual node_, as opposed to physical _node_
 
-A vnode has two primary objectives in life:
+* Each vnode is responsible for **one** partition on the [ring](http://wiki.basho.com/An-Introduction-to-Riak.html#Clustering)
 
-1) Handle incoming requests, called _commands_
+* A vnode is an [Erlang process](http://www.erlang.org/doc/reference_manual/processes.html)
 
-2) Keep track of any _external state_
+* A vnode is a [behavior](http://www.erlang.org/doc/design_principles/fsm.html) written atop of the _gen\_fsm_  behavior
+
+* A vnode handles incoming requests
+
+* A vnode potentially stores data to be retrieved later
+
+* A vnode is _the_ unit of concurrency, replication, and fault tolerance
+
+* Typically many vnodes will run on each phsyical node
+
+* Each machine has a _vnode master_ who's purpose is to keep track of all active vnodes on it's node
+
+As you can see a vnode takes on a lot of responsibility.  If none of the above is sinking in then think of the ring like a honeycomb.  A partition is equivalent to a cell in the comb and a vnode is a  worker bee which, at any one time, is reponsible for exactly one of those cells.  When a worker bee dies another springs in it's place to take care of that cell.  If too many bees die then the comb deteriorates.  BTW, if you're wondering where the queen bee is then I'd be tempted to call her the _vnode master_ but that's a stretch since there is a master for each machine in the cluster.  Analogies only go so far.
+
 
 Commands
 ----------

@@ -1,0 +1,13 @@
+{application, mfmn,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib,
+                  riak_core
+                 ]},
+  {mod, { mfmn_app, []}},
+  {env, []}
+ ]}.

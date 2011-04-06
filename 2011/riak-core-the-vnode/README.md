@@ -182,6 +182,90 @@ The stat vnode is like a mini [redis](http://redis.io/) in that it offers in-pla
         Stats = dict:update(StatName, F, sets:from_list([Val]), Stats0),
         {reply, ok, State#state{stats=Stats}}.
 
+
+Handoff
+----------
+
+A _handoff_ occurs when a vnode realizes it's not on the proper node.  This could happen for two reasons:
+
+1) A new node is added to the cluster causing some partitions to get shuffled around.
+
+2) A node, that's already a member of the cluster, comes back online causing partitions to be given back to it.
+
+You might have heard the term _hinted handoff_; this is was Riak Core implements.  The "hint" is a piece of data that tells the partition where it's proper home is.  Periodically a "home check" is done which uses the hint to determine if the vnode is on the correct physical host.
+
+Implementing handoff seems hard on the surface but it's nothing to be afraid of.  The key thing to remember about handoff is it's purpose is to transfer data from one vnode to another.  Data transfer, that's it.  This means that you don't have to implement handoff if your vnode is purely computational.  Well, you should write the callbacks but they won't have to do anything.
+
+The players in handoff are `is_empty/1`, `delete/1`, `handoff_starting/2`, `handoff_cancelled/1`, `encode_handoff_item/2`, `handle_handoff_data/2`, and `handle_handoff_command/3`.
+
+### is_empty(State) -> Result ###
+
+    State = NewState = term()
+    Result = {true, NewState} | {false, NewState}
+
+Once the container has determined a vnode is out of place it's first action is determine if there is any data to be transfered.  If there is then return _true_ otherwise return _false_.  When a vnode is deemed empty the next `delete/3` callback will be invoked.
+
+### delete(State) -> Result ###
+
+    State = NewState = term()
+    Result = {ok, NewState}
+
+The container will invoke this callback when it's determined there is no more data to be transfered.  That is, when `is_empty/1` returns _true_.  Use this time to perform any premptive cleanup of vnode resources.  On return the vnode will be terminated with a `Reason` of `normal` and the `terminate/2` callback will have a chance to make any final cleanup.
+
+### handoff_starting(TargetNode, State) -> Result ###
+
+    TargetNode = node()
+    Result = {true, NewState} | {false, NewState}
+    State = NewState = term()
+
+Invoked by the container when it's determined a handoff must occur.  The vnode has the final say in whether or not the handoff will occur.  Return _true_ to continue and _false_ to cancel.  A vnode might have some heuristic that determines it's load and choose not to participate in handoff if overloaded at the moment.  The `TargetNode` is the node to transfer the data to.
+
+### handoff_cancelled(State) -> Result ###
+
+    State = NewState = term()
+    Result = {ok, NewState}
+
+The _handoff manager_ allows a set number of concurrent handoff operations.  By default it's 4 but this can be adjusted.  If it's determined that the maximum concurrency has been reached then the container will invoke this callback.  You could use this to undo anything you might have done in `handoff_starting/2`.
+
+### encode_handoff_item(K, V) -> Result ###
+
+    K = {Bucket, Key}
+    Bucket = riak_object:bucket()
+    Key = riak_object:key()
+    V = term()
+    Result -> binary()
+
+It seems there are still remnants of Riak KV leftover in Riak Core.  Notice the notion of bucket/key and their types.  I think the more general contract is that `K` should be a two-tuple and `V` can be anything.  That said, this callback is used by the container to encode data before crossing the wire.  I.e., it serializes the data.  To get this right you have to know three things:
+
+1) Encode both `K` and `V` together, i.e. they need to go across together.
+
+2) This function must return a binary.
+
+3) This works in concert with `handle_handoff_data/2`.
+
+### handle_handoff_data(BinObj, State) -> Result ###
+
+    BinObj = binary()
+    State = NewState = term()
+    Result = {reply, ok, NewState}
+           | {reply, {error, Error}, NewState}
+
+This callback deserializes handoff data as it comes across.  It's job is to reconstruct the vnode state from the `BinObj` binaries.  If there is a problem decoding the data then reply with `{error, Error}` that describes the failure.
+
+### handle_handoff_command(Request, Sender, State) -> Result ###
+
+    Request = term()
+    Sender = sender()
+    State = NewState = term()
+    Result = {reply, Reply, NewState}
+           | {noreply, NewState}
+           | {forward, NewState}
+           | {drop, NewState}
+           | {stop, Reason, NewState}
+
+This callback is very similar to `handle_command/3` but is instead invoked when a request is recieved **during** handoff.  It has two additional possible return types as well: _forward_ and _drop_.  The _forward_ reply will send the request to the target node.  The _drop_ reply will exibit the same behavior as noreply but is used to signify that you are "dropping" this request on the floor.  That is, you won't even attempt to fulfill it.
+
+
 External State
 ----------
 

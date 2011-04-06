@@ -259,7 +259,19 @@ To decode a stat I unwrap it with `binary_to_term/1` and insert it into the loca
 
 This callback is very similar to `handle_command/3` but is instead invoked when a request is recieved **during** handoff.  It has two additional possible return types as well: _forward_ and _drop_.  The _forward_ reply will send the request to the target node.  The _drop_ reply will exibit the same behavior as noreply but is used to signify that you are "dropping" this request on the floor.  That is, you won't even attempt to fulfill it.
 
-TODO: Talk about special `?FOLD_REQ` used by handoff sender.
+If you want your vnode to handoff data properly then you have to implement the `?FOLD_REQ` in `handle_handoff_command/3`.  You need to do this because this is the method by which the _handoff manager_ iterates over your data.  `?FOLD_REQ` is a macro for the `#riak_core_fold_req_v1` record which contains a `foldfun` and `acc0` (accumulator) element.  The `foldfun` expects to be passed three arguments: the key, value, and accumulator.  This means that if your data structure doesn't already support this form of fold function you'll have to wrap it.  For example, if your data was in a proplist you would write a wrapper function to convert each two-tuple into two separate arguments.
+
+    F = fun({Key,Val}, Acc) -> FoldFun(Key, Val, Acc) end,
+    Acc = lists:foldl(F, Acc0, State#state.data),
+    ...
+
+In the case of the stat vnode I'm using a [dict](http://www.erlang.org/doc/man/dict.html) and it natrually supports a 3-arg fold function.  The accumulator is an opaque value and is used to keep track of the socket and trigger sync commands periodically.  See [riak_core_handoff_sender](https://github.com/basho/riak_core/blob/riak_core-0.14.0/src/riak_core_handoff_sender.erl#L79) if you're really curious.  Finally, make sure to return the final value of the accumulator.  You can see just how easy this is by looking at what I did in the stat vnode.
+
+    handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, _Sender, State) ->
+        Acc = dict:fold(Fun, Acc0, State#state.stats),
+        {reply, Acc, State}.
+
+I do wonder if this fold request should have been it's own callback in the vnode behavior, but that's discussion for another day.
 
 
 Other Examples

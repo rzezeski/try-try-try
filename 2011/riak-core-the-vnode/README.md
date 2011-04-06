@@ -1,33 +1,7 @@
 Riak Core, The vnode
 ==========
 
-In this post I want to discuss the _virtual node_ or _vnode_ for short.  It is the fundamental unit of both work and storage in Riak Core and without understanding it you can't successfully build an application atop Riak Core.
-
-First, Why Riak Core
-----------
-
-Before digging into the vnode I want to spend a little time on answering _why_ you may want to use Riak Core.  Specifically, I want to attempt to address Wilson MacGyver's question on the riak-users mailing list.
-
-> The topic I'd really like coverage is, what can riak-core do that other stack including erlang+otp can't do.
-
-This is a great question, and while I hestitate to make any direct comparsions (for fear of selling something else short) I'd like to talk about what I think makes Riak Core an attractive solution.
-
-The key thing to understand is that Riak Core is essentially an implementation of [Dynamo](http://www.allthingsdistributed.com/2007/10/amazons_dynamo.html).  In fact, from what I understand, Riak Core started it's life on [Andy Gross's](https://github.com/argv0) laptop on a plane ride recently after he had read the Dynamo paper.  In the Dynamo paper there are several data structures and techniques laid out that Amazon used to build _highly available_, robust systems that also met certain _SLAs_ 99.9% of the time.  In the paper the authors framed these technologies around a key-value store but they are more general than that.
-
-The two main data structures are:
-
-* The _ring_: The ring (which is really a combination of consistent hashing and vnodes) is at the heart of Riak Core's distribution.  It's what routes requests and data across the cluster.
-
-* _vector clocks_: How do you order events in realtion to each other if you can't trust your time source or don't have one?  You use vector clocks.  In short, Riak Core's vector clock mechanism is almost like having a built-in version control system that will automatically merge forks that it can and alert you to conflicts otherwise.
-
-There are also various processes that are alive in a Riak Core cluster; two important ones being _handoff_ and _coordination_.
-
-* _handoff_: Riak Core implements something called _hinted handoff_.  The "hinted" part means that each parition carries a hint with it that indicates the phsyical node it should be on.  Periodically, the system checks this hint and if the partition is determined to belong to another node it will begin the handoff process.  Which is to say the current node that hosts the parition will start sending data for that partition to the _target_ node now responsible for it.  Handoff occurs when you add a node to the cluster or if a node has restarted after crashing.  Handoff does **NOT** occur when the node crashes.
-
-* _coordination_: The coordinator is responsible for routing requests and satisfying the [CAP](http://www.julianbrowne.com/article/viewer/brewers-cap-theorem) properties _N_, _R_, and _W_.
-
-So these are just some of the things that Riak Core _helps_ you with.  You must keep in mind that Riak Core doesn't necessairly just magically do everything for you.  Much like a _behavior_ Erlang behavior it's providing a _container_ for your application to run in, but you have to provide the funcionality.  In some cases, like coordination, Riak Core gives you some functions to aid in the process but you have to write most of the logic.  My point is that Riak Core still requires some work on your part to get all thoose cool Dynamo features.  That's why I'm writing this series of blog posts.  To help both myself and others understand just what it takes to build a system on Riak Core.
-
+In this post I will implement an application I'm calling Real Time Statistics (rts for short) which will accept log entries over HTTP and generate real-time statistics from those entries.  I will focus on the _vnode_ which is the workhorse of a Riak Core application.
 
 An Interview Question
 ----------
@@ -36,13 +10,11 @@ I was recently posed with an interview question that went something like this:
 
 > You have N machines writing syslog events to a server somewhere.  Each incoming entry should be compared to a list of regular expressions on the server.  Each regexp has a corresponding event that should be triggered if a match occurs.  Said event will write/udpate a value somewhere that can be queried by interested parties.  How do you implement it?
 
-I thought this could make a good fit for solving with Riak Core because it's not completely trivial but it's not bloated with complexity either (it could be, but I'm going to keep it simple here).
-
 
 What's a vnode, Anyways?
 ----------
 
-* A _vnode_ is a _virtual node_, as opposed to physical _node_
+* A vnode is a _virtual node_, as opposed to physical node
 
 * Each vnode is responsible for **one** partition on the [ring](http://wiki.basho.com/An-Introduction-to-Riak.html#Clustering)
 
@@ -60,7 +32,7 @@ What's a vnode, Anyways?
 
 * Each machine has a _vnode master_ who's purpose is to keep track of all active vnodes on it's node
 
-As you can see a vnode takes on a lot of responsibility.  If none of the above is sinking in then think of the ring like a honeycomb.  A partition is equivalent to a cell in the comb and a vnode is a  worker bee which, at any one time, is reponsible for exactly one of those cells.  When a worker bee dies another springs in it's place to take care of that cell.  If too many bees die then the comb deteriorates.  BTW, if you're wondering where the queen bee is then I'd be tempted to call her the _vnode master_ but that's a stretch since there is a master for each machine in the cluster.  Analogies only go so far.
+As you can see a vnode takes on a lot of responsibility.  Luckily, the good folks at Basho have already done most of the heavy lifting by providing a vnode _behavior_ which you code to.  If Erlang is like a foreign language to you than think of a _behavior_ like an _interface_ in that it declares functions (callbacks) that you must implement.  A behavior doesn't stop there, however.  It also provides a _container_ which implements the semtantics of the behavior and makes calls into your callback module.  Kind of like how J2EE provides a web container and you simply code a Servlet, except way cooler.  By coding to a behavior you are free to focus on the problem you need to solve rather than how to implement a vnode.  That said, you can't do much if you don't understand the inputs and outputs of these callbacks.  That's why you're reading this.
 
 
 Lifecycle Callbacks

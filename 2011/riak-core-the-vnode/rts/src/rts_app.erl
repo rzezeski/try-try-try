@@ -14,6 +14,13 @@ start(_StartType, _StartArgs) ->
         {ok, Pid} ->
             ok = riak_core:register_vnode_module(rts_vnode),
             ok = riak_core_node_watcher:service_up(rts, self()),
+
+            ok = riak_core:register_vnode_module(rts_entry_vnode),
+            ok = riak_core_node_watcher:service_up(rts_entry, self()),
+
+            ok = riak_core:register_vnode_module(rts_stat_vnode),
+            ok = riak_core_node_watcher:service_up(rts_stat, self()),
+
             {ok, Pid};
         {error, Reason} ->
             {error, Reason}

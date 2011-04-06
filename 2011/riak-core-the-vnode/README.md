@@ -266,26 +266,6 @@ This callback deserializes handoff data as it comes across.  It's job is to reco
 This callback is very similar to `handle_command/3` but is instead invoked when a request is recieved **during** handoff.  It has two additional possible return types as well: _forward_ and _drop_.  The _forward_ reply will send the request to the target node.  The _drop_ reply will exibit the same behavior as noreply but is used to signify that you are "dropping" this request on the floor.  That is, you won't even attempt to fulfill it.
 
 
-External State
-----------
-
-The word _state_ is already used in the Erlang community to represent the data that is threaded through the various callbacks in behaviors such as `gen_server`.  It's even more confusing when you talk about a `gen_fsm` because the state is actually the state machine's current state, and what is normally called state is often referred to as context.  To confuse matters worse a vnode has to keep state that relates specifically to the vnode such as the parition it's bound to as well as _external state_ that is relevant to your application.  In this case the external state will be various statistics gathered from the incoming entries.  I choose the adjective _external_ because it clearly delineates it from state that is useful only to the vnode and has a scope beyond the vnode that currently holds it.  In the case of Riak KV the external state would be the bitcask container in which your key-values are stored.
-
-If your vnode needs to keep track of external state then you have to code callbacks to handle a _handoff_ situation.  A handoff is when a vnode determines it is no longer on the correct physical node (because a new node was added or a previously downed node just restarted) and it should "handoff" it's external state to the new vnode on the other machine.
-
-In this case there are a few more callbacks you need to implement:
-
-* `is_empty/1`: Called by the vnode container to determine if there is any external state to be transfered
-
-* `encode_handoff_item/2`: Used by the handoff sender to encode an item before sending it to the new target vnode
-
-* `handle_handoff_data/2`: Used by the target vnode to deserialize the incoming data and add it to it's external state
-
-* `handle_handoff_command/3`: Called by the container when a command comes in **while** the vnode is in the middle of a handoff.
-
-* `handoff_starting/2`, `handoff_cancelled/1`, `handoff_finished/2`: Various lifecycle callbacks that we won't need in this example.
-
-
 Other Examples
 ----------
 

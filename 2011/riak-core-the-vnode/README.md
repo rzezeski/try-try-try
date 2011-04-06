@@ -178,6 +178,14 @@ The players in handoff are `is_empty/1`, `delete/1`, `handoff_starting/2`, `hand
 
 Once the container has determined a vnode is out of place it's first action is determine if there is any data to be transfered.  If there is then return _true_ otherwise return _false_.  When a vnode is deemed empty the next `delete/3` callback will be invoked.
 
+The stat vnode checks the size of the `stats` dict to determine if it's empty.
+
+    is_empty(State) ->
+        case dict:size(State#state.stats) of
+            0 -> {true, State};
+            _ -> {false, State}
+        end.
+
 ### delete(State) -> Result ###
 
     State = NewState = term()
@@ -216,6 +224,11 @@ It seems there are still remnants of Riak KV leftover in Riak Core.  Notice the 
 
 3) This works in concert with `handle_handoff_data/2`.
 
+To encode a stat I simply make a two-tuple with the name and value and convert to _external format_ via `term_to_binary/1`.
+
+    encode_handoff_item(StatName, Val) ->
+        term_to_binary({StatName,Val}).
+
 ### handle_handoff_data(BinObj, State) -> Result ###
 
     BinObj = binary()
@@ -224,6 +237,14 @@ It seems there are still remnants of Riak KV leftover in Riak Core.  Notice the 
            | {reply, {error, Error}, NewState}
 
 This callback deserializes handoff data as it comes across.  It's job is to reconstruct the vnode state from the `BinObj` binaries.  If there is a problem decoding the data then reply with `{error, Error}` that describes the failure.
+
+To decode a stat I unwrap it with `binary_to_term/1` and insert it into the local dict.
+
+    handle_handoff_data(Data, #state{stats=Stats0}=State) ->
+        {StatName, Val} = binary_to_term(Data),
+        Stats = dict:store(StatName, Val, Stats0),
+        {reply, ok, State#state{stats=Stats}}.
+
 
 ### handle_handoff_command(Request, Sender, State) -> Result ###
 
@@ -237,6 +258,8 @@ This callback deserializes handoff data as it comes across.  It's job is to reco
            | {stop, Reason, NewState}
 
 This callback is very similar to `handle_command/3` but is instead invoked when a request is recieved **during** handoff.  It has two additional possible return types as well: _forward_ and _drop_.  The _forward_ reply will send the request to the target node.  The _drop_ reply will exibit the same behavior as noreply but is used to signify that you are "dropping" this request on the floor.  That is, you won't even attempt to fulfill it.
+
+TODO: Talk about special `?FOLD_REQ` used by handoff sender.
 
 
 Other Examples

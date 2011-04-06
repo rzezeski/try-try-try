@@ -50,15 +50,11 @@ The `init/1` and `terminate/2` callbacks are called at the edges of the vnode li
 
 This callback initializes the state of the vnode.  The entry vnode needs to store the regexp to trigger fun mapping so that the command callback can access it later.
 
-    init([_Partition]) ->
-        %% registry consist of regexps mapped to funs.  each fun must take
-        %% _two_ arguments: 1) an {Entry, Regexp} tuple and 2) the result
-        %% of running the re:run on the incoming Entry using the regexp
-        %% keyed to this fun.
+    init([Partition]) ->
         Reg = [
                {?COMBINED_LF, fun ?MODULE:combined_lf/2}
               ],
-        {ok, #state { reg=Reg }}.
+        {ok, #state { partition=Partition, reg=Reg }}.
 
 The entry vnode needs to track the stat updates as they are sent in.
 
@@ -108,8 +104,9 @@ There are three choices of reply.  In all cases the 3rd element of the tuple is 
 The entry vnode needs to compare each incoming log entry with all registered regular expressions and possibly execute a corresponding trigger fun.
 
     handle_command({entry, Client, Entry}, _Sender, #state{reg=Reg}=State) ->
+        io:format("~p~n", [{entry, State#state.partition}]),
         lists:foreach(match(Client, Entry), Reg),
-        {noreply, State};
+        {noreply, State}.
 
 With the `match/2` HOF defined as so.
 
@@ -132,23 +129,25 @@ The stat vnode is like a mini [redis](http://redis.io/) in that it offers in-pla
                     Found
             end,
         {reply, Reply, State};
-    handle_command({put, StatName, Val}, _Sender, #state{stats=Stats0}=State) ->
+
+    handle_command({set, StatName, Val}, _Sender, #state{stats=Stats0}=State) ->
         Stats = dict:store(StatName, Val, Stats0),
         {reply, ok, State#state{stats=Stats}};
+
     handle_command({incr, StatName}, _Sender, #state{stats=Stats0}=State) ->
         Stats = dict:update_counter(StatName, 1, Stats0),
         {reply, ok, State#state{stats=Stats}};
+
     handle_command({incrby, StatName, Val}, _Sender, #state{stats=Stats0}=State) ->
         Stats = dict:update_counter(StatName, Val, Stats0),
         {reply, ok, State#state{stats=Stats}};
-    handle_command({decr, StatName}, _Sender, #state{stats=Stats0}=State) ->
-        Stats = dict:update_counter(StatName, -1, Stats0),
-        {reply, ok, State#state{stats=Stats}};
+
     handle_command({append, StatName, Val}, _Sender, #state{stats=Stats0}=State) ->
         Stats = try dict:append(StatName, Val, Stats0)
                 catch _:_ -> dict:store(StatName, [Val], Stats0)
                 end,
         {reply, ok, State#state{stats=Stats}};
+
     handle_command({sadd, StatName, Val}, _Sender, #state{stats=Stats0}=State) ->
         F = fun(S) ->
                     sets:add_element(Val, S)

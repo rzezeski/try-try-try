@@ -63,9 +63,48 @@ What's a vnode, Anyways?
 As you can see a vnode takes on a lot of responsibility.  If none of the above is sinking in then think of the ring like a honeycomb.  A partition is equivalent to a cell in the comb and a vnode is a  worker bee which, at any one time, is reponsible for exactly one of those cells.  When a worker bee dies another springs in it's place to take care of that cell.  If too many bees die then the comb deteriorates.  BTW, if you're wondering where the queen bee is then I'd be tempted to call her the _vnode master_ but that's a stretch since there is a master for each machine in the cluster.  Analogies only go so far.
 
 
-Commands
+Lifecycle Callbacks
 ----------
 
+The `init/1` and `terminate/2` callbacks are called at the edges of the vnode lifecycle.
+
+*** init([Index]) -> Result ***
+
+    Index = int() >= 0
+    Result = {ok, State}
+    State = term()
+
+This callback initializes the state of the vnode.  The entry vnode needs to store the regexp to trigger fun mapping so that the command callback can access it later.
+
+    init([_Partition]) ->
+        %% registry consist of regexps mapped to funs.  each fun must take
+        %% _two_ arguments: 1) an {Entry, Regexp} tuple and 2) the result
+        %% of running the re:run on the incoming Entry using the regexp
+        %% keyed to this fun.
+        Reg = [
+               {?COMBINED_LF, fun ?MODULE:combined_lf/2}
+              ],
+        {ok, #state { reg=Reg }}.
+
+The entry vnode needs to track the stat updates as they are sent in.
+
+    init([Partition]) ->
+        {ok, #state { partition=Partition, stats=dict:new() }}.
+
+*** terminate(Reason, State) -> Result ***
+
+    Reason = normal | shutdown | {shutdown, term()} | term()
+    State = Result = term()
+
+Used to cleanup any resources held by the vnode.  The `Reason` will depend on how the vnode was stopped.  Since the vnode container is simply a _gen\_fsm_ underneath you can read more about the `Reason` [here](http://erldocs.com/R14B/stdlib/gen_fsm.html).  The `State` is the final state of the vnode and `Result` can be anything but will be ignored by the container.
+
+Since both the entry and stat vnodes keep everything in memory Erlang will handle cleanup implicitly and there is nothing explicit to be done in terminate.
+
+    terminate(_Reason, _State) ->
+        ok.
+
+Commands
+----------
 
 All incoming requests to a Riak Core cluster end up being translated to a _commands_ on your vnode.  For example, when you perform a _GET_ on Riak KV via `curl` it will eventually wind up being handled by the [handle_command](https://github.com/basho/riak_kv/blob/riak_kv-0.14.0/src/riak_kv_vnode.erl#L171) callback in `riak_kv_vnode`.  This means that the first thing to think about when writing your vnode is:
 

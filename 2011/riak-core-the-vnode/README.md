@@ -106,28 +106,34 @@ Since both the entry and stat vnodes keep everything in memory Erlang will handl
 Commands
 ----------
 
-All incoming requests to a Riak Core cluster end up being translated to a _commands_ on your vnode.  For example, when you perform a _GET_ on Riak KV via `curl` it will eventually wind up being handled by the [handle_command](https://github.com/basho/riak_kv/blob/riak_kv-0.14.0/src/riak_kv_vnode.erl#L171) callback in `riak_kv_vnode`.  This means that the first thing to think about when writing your vnode is:
+All incoming requests become commands on your vnode.  For example, a _GET_ on Riak KV will end up in the [handle_command](https://github.com/basho/riak_kv/blob/riak_kv-0.14.0/src/riak_kv_vnode.erl#L171) defined in it's vnode.  For this reason, it might be easiest to start with the question:
 
 > What commands will I need to implement?
 
-The two command callbacks are `handle_command/3` and `handle_handoff_command/3`.  The later is called when a command is sent to a vnode that is in the middle of a handoff and I'll holdoff until the handoff section to discuss it.
+To implement a command you add a new `handle_command/3` [function clause](http://www.erlang.org/doc/reference_manual/functions.html) that matches against the incoming request.  For example, to get a stat the request will be `{get, StatName}` which would require a function head with the form `handle_command({get, StatName}, ...)`.
 
-    Module:handle_command(Request, Sender, State) -> Result
-        Request = term()
-        Sender = sender()
-        State = NewState = term()
-        Result = {reply, Reply, NewState}
-                 | {noreply, NewState}
-                 | {stop, Reason, NewState}
+*** handle_command(Request, Sender, State) -> Result ***
 
-The handle command takes three arguments.  The `Request` represents the incoming request and will typically be an atom, tagged tuple, or even a record.  The `Sender` is a representation of what process the request originated from but this should be an opaque value that you pass to a utility function such as `riak_core_vnode:reply/2`.  Finally there is the `State` which is like the state you might keep in a `gen_server`; essentially data that you want to persist across callback invocations.  This state is where you would keep a handle to your client data if you were to store any.
+    Request = term()
+    Sender = sender()
+    State = NewState = term()
+    Result = {reply, Reply, NewState}
+             | {noreply, NewState}
+             | {stop, Reason, NewState}
 
-The typical implementation of handle_command is to pattern match on the `Request`, possibly extract some info from `State` and then call a helper function to execute the command.  You use the `reply` tuple to return a value, `noreply` to not return a value (or you returned one directly in your helper fun), or the `stop` tuple to stop the vnode.
+The `Request` can be anything (i.e. any term) but is typically a _tagged tuple_.  The `Sender` is a representation of the client process but is typically used as an opaque value that you would use with a utility function such as `riak_core_vnode:reply/2`.  The `State` is much like state in a _gen\_server_ and is there to store data persistent across callback invocations.
 
-For my `rts_entry_vnode` I want to test the incoming log entry against all registered regular expressions and possibly execute the corresponding trigger fun.  Also notice I have no interest in returning a value so i use `noreply`.
+There are three choices of reply.  In all cases the 3rd element of the tuple is the potentially modified state.
+
+1) _reply_: Send `Reply` back to the client.
+
+2) _noreply_: Don't send a reply.  This doesn't necessairly indicate that no reply was made, it just means you don't want the vnode container to send a reply.  For example, this command could cause a long-running action to occur and you might spawn it on another process passing the `Sender`.
+
+3) _stop_: For whatever `Reason` you want this vnode to terminate.
+
+The entry vnode needs to compare each incoming log entry with all registered regular expressions and possibly execute a corresponding trigger fun.
 
     handle_command({entry, Client, Entry}, _Sender, #state{reg=Reg}=State) ->
-        ?PRINT({handle_entry, State#state.partition}),
         lists:foreach(match(Client, Entry), Reg),
         {noreply, State};
 
@@ -141,7 +147,7 @@ With the `match/2` HOF defined as so.
                 end
         end.
 
-The `rts_stat_vnode` is a little complicated as there are more commands that can be send to it.  It's kind of like a mini [redis](http://redis.io/) in that it offers in-place updates instead of having to do a get-mutate-put cycle.  Notice that all mutative operations return a new state with a modified `stats` entry which is a [dict](http://erldocs.com/R14B/stdlib/dict.html) that holds the various statistics.
+The stat vnode is like a mini [redis](http://redis.io/) in that it offers in-place updates.  Notice that all mutations cause a new state to be created and returned.
 
     handle_command({get, StatName}, _Sender, #state{stats=Stats}=State) ->
         Reply =

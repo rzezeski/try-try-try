@@ -68,7 +68,7 @@ Lifecycle Callbacks
 
 The `init/1` and `terminate/2` callbacks are called at the edges of the vnode lifecycle.
 
-*** init([Index]) -> Result ***
+### init([Index]) -> Result ###
 
     Index = int() >= 0
     Result = {ok, State}
@@ -91,7 +91,7 @@ The entry vnode needs to track the stat updates as they are sent in.
     init([Partition]) ->
         {ok, #state { partition=Partition, stats=dict:new() }}.
 
-*** terminate(Reason, State) -> Result ***
+### terminate(Reason, State) -> Result ###
 
     Reason = normal | shutdown | {shutdown, term()} | term()
     State = Result = term()
@@ -112,7 +112,7 @@ All incoming requests become commands on your vnode.  For example, a _GET_ on Ri
 
 To implement a command you add a new `handle_command/3` [function clause](http://www.erlang.org/doc/reference_manual/functions.html) that matches against the incoming request.  For example, to get a stat the request will be `{get, StatName}` which would require a function head with the form `handle_command({get, StatName}, ...)`.
 
-*** handle_command(Request, Sender, State) -> Result ***
+### handle_command(Request, Sender, State) -> Result ###
 
     Request = term()
     Sender = sender()

@@ -66,13 +66,76 @@ As you can see a vnode takes on a lot of responsibility.  If none of the above i
 Commands
 ----------
 
-The first thing to wrap your head around is that an incoming request to a Riak Core cluster ends up being translated to a _command_ on your vnode implementation.  For example, when you perform a _GET_ on Riak KV via `curl` it will eventually wind up being handled by the [handle_command](https://github.com/basho/riak_kv/blob/riak_kv-0.14.0/src/riak_kv_vnode.erl#L171) callback in `riak_kv_vnode`.  This means that the first thing to think about when writing your vnode is:
+
+All incoming requests to a Riak Core cluster end up being translated to a _commands_ on your vnode.  For example, when you perform a _GET_ on Riak KV via `curl` it will eventually wind up being handled by the [handle_command](https://github.com/basho/riak_kv/blob/riak_kv-0.14.0/src/riak_kv_vnode.erl#L171) callback in `riak_kv_vnode`.  This means that the first thing to think about when writing your vnode is:
 
 > What commands will I need to implement?
 
-If your vnode simply needs to perform some computation and has no need for external state then congratulations, you're done!  Seriously, besides the `init` callback, `handle_command` is the only thing you need to implement in Riak Core to distribute work.  In fact, to distribute the regexp matching I'll write a vnode that does just this.
+The two command callbacks are `handle_command/3` and `handle_handoff_command/3`.  The later is called when a command is sent to a vnode that is in the middle of a handoff and I'll holdoff until the handoff section to discuss it.
 
-Along with matching the entries I also need to potentially update statistics when a match occurs and for that I'll need a vnode that does a little more than just handle commands.
+    Module:handle_command(Request, Sender, State) -> Result
+        Request = term()
+        Sender = sender()
+        State = NewState = term()
+        Result = {reply, Reply, NewState}
+                 | {noreply, NewState}
+                 | {stop, Reason, NewState}
+
+The handle command takes three arguments.  The `Request` represents the incoming request and will typically be an atom, tagged tuple, or even a record.  The `Sender` is a representation of what process the request originated from but this should be an opaque value that you pass to a utility function such as `riak_core_vnode:reply/2`.  Finally there is the `State` which is like the state you might keep in a `gen_server`; essentially data that you want to persist across callback invocations.  This state is where you would keep a handle to your client data if you were to store any.
+
+The typical implementation of handle_command is to pattern match on the `Request`, possibly extract some info from `State` and then call a helper function to execute the command.  You use the `reply` tuple to return a value, `noreply` to not return a value (or you returned one directly in your helper fun), or the `stop` tuple to stop the vnode.
+
+For my `rts_entry_vnode` I want to test the incoming log entry against all registered regular expressions and possibly execute the corresponding trigger fun.  Also notice I have no interest in returning a value so i use `noreply`.
+
+    handle_command({entry, Client, Entry}, _Sender, #state{reg=Reg}=State) ->
+        ?PRINT({handle_entry, State#state.partition}),
+        lists:foreach(match(Client, Entry), Reg),
+        {noreply, State};
+
+With the `match/2` HOF defined as so.
+
+    match(Client, Entry) ->
+        fun({Regexp, Fun}) ->
+                case re:run(Entry, Regexp, [{capture, all, list}]) of
+                    nomatch -> ignore;
+                    {match, Match} -> Fun({Client, Entry, Regexp}, Match)
+                end
+        end.
+
+The `rts_stat_vnode` is a little complicated as there are more commands that can be send to it.  It's kind of like a mini [redis](http://redis.io/) in that it offers in-place updates instead of having to do a get-mutate-put cycle.  Notice that all mutative operations return a new state with a modified `stats` entry which is a [dict](http://erldocs.com/R14B/stdlib/dict.html) that holds the various statistics.
+
+    handle_command({get, StatName}, _Sender, #state{stats=Stats}=State) ->
+        Reply =
+            case dict:find(StatName, Stats) of
+                error ->
+                    not_found;
+                Found ->
+                    Found
+            end,
+        {reply, Reply, State};
+    handle_command({put, StatName, Val}, _Sender, #state{stats=Stats0}=State) ->
+        Stats = dict:store(StatName, Val, Stats0),
+        {reply, ok, State#state{stats=Stats}};
+    handle_command({incr, StatName}, _Sender, #state{stats=Stats0}=State) ->
+        Stats = dict:update_counter(StatName, 1, Stats0),
+        {reply, ok, State#state{stats=Stats}};
+    handle_command({incrby, StatName, Val}, _Sender, #state{stats=Stats0}=State) ->
+        Stats = dict:update_counter(StatName, Val, Stats0),
+        {reply, ok, State#state{stats=Stats}};
+    handle_command({decr, StatName}, _Sender, #state{stats=Stats0}=State) ->
+        Stats = dict:update_counter(StatName, -1, Stats0),
+        {reply, ok, State#state{stats=Stats}};
+    handle_command({append, StatName, Val}, _Sender, #state{stats=Stats0}=State) ->
+        Stats = try dict:append(StatName, Val, Stats0)
+                catch _:_ -> dict:store(StatName, [Val], Stats0)
+                end,
+        {reply, ok, State#state{stats=Stats}};
+    handle_command({sadd, StatName, Val}, _Sender, #state{stats=Stats0}=State) ->
+        F = fun(S) ->
+                    sets:add_element(Val, S)
+            end,
+        Stats = dict:update(StatName, F, sets:from_list([Val]), Stats0),
+        {reply, ok, State#state{stats=Stats}}.
 
 External State
 ----------

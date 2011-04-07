@@ -1,7 +1,7 @@
 Riak Core, The vnode
 ==========
 
-If you're brand to Riak Core you should read my previous post about [multinode](https://github.com/rzezeski/try-try-try/tree/master/2011/riak-core-first-multinode) first to see how to create a project skeleton.
+If you're new to Riak Core you should read my previous post about [multinode](https://github.com/rzezeski/try-try-try/tree/master/2011/riak-core-first-multinode) first to see how to create a project skeleton.
 
 In this post I will implement an application I'm calling Real Time Statistics (RTS for short) which will accept log entries over HTTP and generate real-time statistics from those entries.  I will focus on the _vnode_ which is the workhorse of a Riak Core application.  You should follow along by cloning this repo and looking at the RTS code as you read this.
 

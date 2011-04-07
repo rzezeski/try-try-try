@@ -3,3 +3,4 @@
 deps/*
 ebin
 rel/rts
+dev

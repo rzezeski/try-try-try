@@ -274,6 +274,43 @@ In the case of the stat vnode I'm using a [dict](http://www.erlang.org/doc/man/d
 I do wonder if this fold request should have been it's own callback in the vnode behavior, but that's discussion for another day.
 
 
+Using rts
+----------
+
+Now it's time to see it in action.  You'll need to download the rts project, compile it, and make a release.
+
+    git clone git://github.com/rzezeski/try-try-try.git
+    cd try-try-try/2011/riak-core-the-vnode/rts
+    make rel
+
+Start the console.
+
+    ./rel/rts/bin/rts console
+
+Open another terminal window and run the `replay` script with either my provided access log or your own.  The log must be in [combined log format](own.  Please note that the log must be in apache combined).
+
+    gunzip -c progski.access.log.gz | ./replay progski
+
+You should see a bunch of two-tuple's fly by in the console.  This is showing the vnode's index (partition) that the incoming entry is being handled on.  Notice how the number is constalty changing, this shows that work is being distributed.  Keep in mind this won't be the fastest cause it's a new HTTP connection for each entry.  I'm thinking of implementing persistent connections for a future post.
+
+After the script has finished (or kill it early if you want, it won't hurt anything) go back to the console and ask for some stats.
+
+    (rts@127.0.0.1)2> rts:get("progski", "total_reqs").
+    {ok,10809}
+
+    (rts@127.0.0.1)3> rts:get("progski", "GET").
+    {ok,10485}
+
+    (rts@127.0.0.1)4> rts:get("progski", "HEAD").
+    {ok,324}
+
+    (rts@127.0.0.1)5> rts:get("progski", "PUT").
+    not_found
+
+    {ok, Agents} = rts:get("progski", "agents").
+    sets:to_list(Agents).
+
+
 Other Examples
 ----------
 

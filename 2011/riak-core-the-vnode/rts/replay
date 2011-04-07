@@ -1,7 +1,7 @@
 #! /bin/sh
 #
 # Usage:
-#     gunzip access.log.gz | ./replay [--devrel] client
+#     gunzip -c access.log.gz | ./replay [--devrel] client
 #     ./replay [--devrel] client < access.log
 
 PORTS[0]=8888

@@ -1,7 +1,7 @@
 Riak Core, The vnode
 ==========
 
-In this post I will implement an application I'm calling Real Time Statistics (RTS for short) which will accept log entries over HTTP and generate real-time statistics from those entries.  I will focus on the _vnode_ which is the workhorse of a Riak Core application.
+In this post I will implement an application I'm calling Real Time Statistics (RTS for short) which will accept log entries over HTTP and generate real-time statistics from those entries.  I will focus on the _vnode_ which is the workhorse of a Riak Core application.  You should follow along by cloning this repo and looking at the RTS code as you read this.
 
 An Interview Question
 ----------
@@ -159,13 +159,7 @@ The stat vnode is like a mini [redis](http://redis.io/) in that it offers in-pla
 Handoff
 ----------
 
-A _handoff_ occurs when a vnode realizes it's not on the proper node.  This could happen for two reasons:
-
-1) A new node is added to the cluster causing some partitions to get shuffled around.
-
-2) A node, that's already a member of the cluster, comes back online causing partitions to be given back to it.
-
-You might have heard the term _hinted handoff_; this is was Riak Core implements.  The "hint" is a piece of data that tells the partition where it's proper home is.  Periodically a "home check" is done which uses the hint to determine if the vnode is on the correct physical host.
+A _handoff_ occurs when a vnode realizes it's not on the proper node.  This will happen when a node joins or leaves the cluster, causing the ring to change.  Riak Core implements _hinted handoff_..  The "hint" is a piece of data that tells the partition where it's proper home is.  Periodically a "home check" is done which uses the hint to determine if the vnode is on the correct physical host.
 
 Implementing handoff seems hard on the surface but it's nothing to be afraid of.  The key thing to remember about handoff is it's purpose is to transfer data from one vnode to another.  Data transfer, that's it.  This means that you don't have to implement handoff if your vnode is purely computational.  Well, you should write the callbacks but they won't have to do anything.
 
@@ -176,7 +170,7 @@ The players in handoff are `is_empty/1`, `delete/1`, `handoff_starting/2`, `hand
     State = NewState = term()
     Result = {true, NewState} | {false, NewState}
 
-Once the container has determined a vnode is out of place it's first action is determine if there is any data to be transferred.  If there is then return _true_ otherwise return _false_.  When a vnode is deemed empty the next `delete/3` callback will be invoked.
+Once the container has determined a vnode is out of place it's first action is determine if there is any data to be transferred.  If there is then return _true_ otherwise return _false_.  When a vnode is deemed empty the `delete/3` callback will be invoked.
 
 The stat vnode checks the size of the `stats` dict to determine if it's empty.
 

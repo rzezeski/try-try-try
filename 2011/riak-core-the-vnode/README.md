@@ -310,6 +310,26 @@ After the script has finished (or kill it early if you want, it won't hurt anyth
     {ok, Agents} = rts:get("progski", "agents").
     sets:to_list(Agents).
 
+Now lets turn it up a notch test this systems supposed "real time" moniker.  First, delete the `io:format` call in the entry vnode, recompile, and then build a devrel.
+
+    make && make devrel
+
+Now start your nodes and join them.
+
+    for d in dev/dev*; do $d/bin/rts start; done
+    for d in dev/dev*; do $d/bin/rts ping; done
+    for d in dev/dev{2,3}; do $d/bin/rts-admin join rts1@127.0.0.1; done
+    ./dev/dev1/bin/rts-admin ringready
+
+Now run replay with the `--devrel` option.
+
+    gunzip -c progski.access.log.gz | ./replay --devrel progski
+
+If you open up `top` or some other similar process monitoring tool you should see all three beam processes doing some work.  It won't be any faster than one node because the overhead is probably in setup/teardown of the HTTP connection but it demonstrates that work is being distributed among multiple nodes.  Disable the tty handler so that error msgs don't mess with your console.
+
+    error_logger:delete_report_handler(error_logger_tty_h).
+
+Now ask for stats while the entries are flowing in.  There ya go, real time statistics.
 
 Other Examples
 ----------

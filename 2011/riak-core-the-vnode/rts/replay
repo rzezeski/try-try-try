@@ -1,0 +1,16 @@
+#! /bin/sh
+#
+# Usage:
+#     gunzip access.log.gz | ./replay <client>
+#     ./replay <client> < access.log
+
+CLIENT=$1
+shift
+
+while read line
+do
+    curl -X POST \
+        -H 'content-type: text/plain' \
+        "http://localhost:8888/rts/entry/$CLIENT" \
+        -d "$line"
+done

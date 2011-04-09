@@ -1,0 +1,43 @@
+#! /bin/sh
+#
+# Usage:
+#     gunzip access.log.gz | ./replay [--devrel] client
+#     ./replay [--devrel] client < access.log
+
+PORTS[0]=8888
+MAX=0
+
+while [ $# -gt 0 ]
+do
+    case $1 in
+        --devrel | -d )
+            PORTS[0]=8881
+            PORTS[1]=8882
+            PORTS[2]=8883
+            MAX=2
+            ;;
+        *)
+            break
+            ;;
+    esac
+    shift
+done
+
+CLIENT=$1
+shift
+
+node=0
+while read line
+do
+    curl -X POST \
+        -H 'content-type: text/plain' \
+        "http://localhost:${PORTS[$node]}/rts/entry/$CLIENT" \
+        -d "$line"
+
+    if [ $node -eq $MAX ]
+    then
+        node=0
+    else
+        ((node++))
+    fi
+done

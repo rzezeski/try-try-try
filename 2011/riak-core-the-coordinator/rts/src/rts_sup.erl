@@ -32,6 +32,15 @@ init(_Args) ->
             {riak_core_vnode_master, start_link, [rts_stat_vnode]},
             permanent, 5000, worker, [riak_core_vnode_master]},
 
+    WriteFSMs = {rts_write_fsm_sup,
+                 {rts_write_fsm_sup, start_link, []},
+                 permanent, infinity, supervisor, [rts_write_fsm_sup]},
+
+    GetFSMs = {rts_get_fsm_sup,
+               {rts_get_fsm_sup, start_link, []},
+               permanent, infinity, supervisor, [rts_get_fsm_sup]},
+
+
     {ok, Port} = application:get_env(rts, http_port),
     Dispatch = [{["rts", "entry", client], rts_wm_entry, []}],
 
@@ -46,4 +55,4 @@ init(_Args) ->
 
     { ok,
         { {one_for_one, 5, 10},
-          [VMaster, Entry, Stat, Web]}}.
+          [VMaster, Entry, Stat, WriteFSMs, GetFSMs, Web]}}.

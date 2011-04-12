@@ -19,9 +19,9 @@
          encode_handoff_item/2]).
 
 -export([
-         get/2,
+         get/3,
          set/3,
-         incr/2,
+         incr/3,
          incrby/3,
          append/3,
          sadd/3
@@ -40,14 +40,21 @@
 start_vnode(I) ->
     riak_core_vnode_master:get_vnode_pid(I, ?MODULE).
 
-get(IdxNode, StatName) ->
-    ?sync(IdxNode, {get, StatName}, ?MASTER).
+get(Preflist, ReqID, StatName) ->
+    riak_core_vnode_master:command(Preflist,
+                                   {get, ReqID, StatName},
+                                   {fsm, undefined, self()},
+                                   ?MASTER).
 
 set(IdxNode, StatName, Val) ->
     ?sync(IdxNode, {set, StatName, Val}, ?MASTER).
 
-incr(IdxNode, StatName) ->
-    ?sync(IdxNode, {incr, StatName}, ?MASTER).
+%% TODO: I have to look at the Sender stuff more closely again
+incr(Preflist, ReqID, StatName) ->
+    riak_core_vnode_master:command(Preflist,
+                                   {incr, ReqID, StatName},
+                                   {fsm, undefined, self()},
+                                   ?MASTER).
 
 incrby(IdxNode, StatName, Val) ->
     ?sync(IdxNode, {incrby, StatName, Val}, ?MASTER).
@@ -65,23 +72,23 @@ sadd(IdxNode, StatName, Val) ->
 init([Partition]) ->
     {ok, #state { partition=Partition, stats=dict:new() }}.
 
-handle_command({get, StatName}, _Sender, #state{stats=Stats}=State) ->
+handle_command({get, ReqID, StatName}, _Sender, #state{stats=Stats}=State) ->
     Reply =
         case dict:find(StatName, Stats) of
             error ->
                 not_found;
-            Found ->
+            {ok, Found} ->
                 Found
         end,
-    {reply, Reply, State};
+    {reply, {ok, ReqID, Reply}, State};
 
 handle_command({set, StatName, Val}, _Sender, #state{stats=Stats0}=State) ->
     Stats = dict:store(StatName, Val, Stats0),
     {reply, ok, State#state{stats=Stats}};
 
-handle_command({incr, StatName}, _Sender, #state{stats=Stats0}=State) ->
+handle_command({incr, ReqID, StatName}, _Sender, #state{stats=Stats0}=State) ->
     Stats = dict:update_counter(StatName, 1, Stats0),
-    {reply, ok, State#state{stats=Stats}};
+    {reply, {ok, ReqID}, State#state{stats=Stats}};
 
 handle_command({incrby, StatName, Val}, _Sender, #state{stats=Stats0}=State) ->
     Stats = dict:update_counter(StatName, Val, Stats0),

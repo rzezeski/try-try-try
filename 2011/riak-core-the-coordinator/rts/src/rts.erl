@@ -13,6 +13,9 @@
          incrby/3,
          sadd/3
         ]).
+-export([incr_debug_preflist/2]).
+
+-define(TIMEOUT, 5000).
 
 %%%===================================================================
 %%% API
@@ -26,8 +29,6 @@ ping() ->
     riak_core_vnode_master:sync_spawn_command(IndexNode, ping, rts_vnode_master).
 
 %% @doc Process an entry.
-%%
-%% TODO: Coordinator to provide N/R/W
 entry(Client, Entry) ->
     DocIdx = riak_core_util:chash_key({list_to_binary(Client),
                                        term_to_binary(now())}),
@@ -37,7 +38,9 @@ entry(Client, Entry) ->
 
 %% @doc Get a stat's value.
 get(Client, StatName) ->
-    rts_stat_vnode:get(get_idxnode(Client, StatName), StatName).
+    ReqID = mk_reqid(),
+    rts_get_fsm_sup:start_get_fsm([ReqID, self(), Client, StatName]),
+    wait_for_reqid(ReqID, ?TIMEOUT).
 
 %% @doc Set a stat's value, replacing the current value.
 set(Client, StatName, Val) ->
@@ -49,7 +52,14 @@ append(Client, StatName, Val) ->
 
 %% @doc Increment the stat's value by 1.
 incr(Client, StatName) ->
-    rts_stat_vnode:incr(get_idxnode(Client, StatName), StatName).
+    ReqID = mk_reqid(),
+    rts_write_fsm_sup:start_write_fsm([ReqID, self(), Client, StatName, incr]),
+    wait_for_reqid(ReqID, ?TIMEOUT).
+
+incr_debug_preflist(Client, StatName) ->
+    DocIdx = riak_core_util:chash_key({list_to_binary(Client),
+                                       list_to_binary(StatName)}),
+    io:format("Preflist: ~p~n", [riak_core_apl:get_apl(DocIdx, 3, rts_stat)]).
 
 %% @doc Increment the stat's value by Val.
 incrby(Client, StatName, Val) ->
@@ -66,3 +76,13 @@ sadd(Client, StatName, Val) ->
 get_idxnode(Client, StatName) ->
     DocIdx = riak_core_util:chash_key({list_to_binary(Client), list_to_binary(StatName)}),
     hd(riak_core_apl:get_apl(DocIdx, 1, rts_stat)).
+
+mk_reqid() -> erlang:phash2(erlang:now()).
+
+wait_for_reqid(ReqID, Timeout) ->
+    receive
+	{ReqID, ok} -> ok;
+        {ReqID, ok, Val} -> {ok, Val}
+    after Timeout ->
+	    {error, timeout}
+    end.

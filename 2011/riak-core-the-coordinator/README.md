@@ -1,7 +1,12 @@
 Riak Core, The Coordinator
 ==========
 
-At the end of my [vnode](https://github.com/rzezeski/try-try-try/tree/master/2011/riak-core-the-vnode) post I asked the question _Where's the redundancy?_  There is none in RTS, thus far.  Riak Core isn't magic but rather a suite of tools for building distirbuted, highly available systems.  You have to build your own redundancy, but Riak Core offsets several tools to help.  In this post I'll show you how to build soething called a _coordinator_ in Riak Core.
+WARNING
+----------
+
+**READ THE FOLLOWING AT YOUR OWN RISK...STILL A WORK IN PROGRESS AND MAY COMPLETELY CHANGE**
+
+At the end of my [vnode](https://github.com/rzezeski/try-try-try/tree/master/2011/riak-core-the-vnode) post I asked the question _Where's the redundancy?_  There is none in RTS, thus far.  Riak Core isn't magic but rather a suite of tools for building distirbuted, highly available systems.  You have to build your own redundancy, but Riak Core offers several tools to help.  In this post I'll show you how to build soething called a _coordinator_ with the help of Riak Core.
 
 What is a Coordinator?
 ----------

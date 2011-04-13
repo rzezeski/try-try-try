@@ -20,7 +20,8 @@
                 client,
                 stat_name,
                 preflist,
-                num_r=0}).
+                num_r=0,
+                replies=[]}).
 
 start_link(ReqID, From, Client, StatName) ->
     gen_fsm:start_link(?MODULE, [ReqID, From, Client, StatName], []).
@@ -52,12 +53,20 @@ execute(timeout, SD0=#state{req_id=ReqId,
 %% @doc Wait for R replies and then respond to From (original client
 %% that called `rts:get/2').
 %% TODO: read repair...or another blog post?
-wait({ok, ReqID, Val}, SD0=#state{from=From, num_r=NumR0}) ->
+wait({ok, ReqID, Val}, SD0=#state{from=From, num_r=NumR0, replies=Replies0}) ->
     NumR = NumR0 + 1,
-    SD = SD0#state{num_r=NumR},
+    Replies = [Val|Replies0],
+    SD = SD0#state{num_r=NumR,replies=Replies},
     if
         NumR =:= ?R ->
-            From ! {ReqID, ok, Val},
+            Reply =
+                case lists:any(different(Val), Replies) of
+                    true ->
+                        Replies;
+                    false ->
+                        Val
+                end,
+            From ! {ReqID, ok, Reply},
             {stop, normal, SD};
         %% TODO: This could cause process leaks b/c FSM never times
         %% out...waits forever...tsk tsk Ryan
@@ -77,3 +86,9 @@ code_change(_OldVsn, StateName, State, _Extra) -> {ok, StateName, State}.
 
 terminate(_Reason, _SN, _SD) ->
     ok.
+
+%%%===================================================================
+%%% Internal Functions
+%%%===================================================================
+
+different(A) -> fun(B) -> A =/= B end.

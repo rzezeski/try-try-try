@@ -44,17 +44,15 @@ get(Client, StatName) ->
 
 %% @doc Set a stat's value, replacing the current value.
 set(Client, StatName, Val) ->
-    rts_stat_vnode:set(get_idxnode(Client, StatName), StatName, Val).
+    do_write(Client, StatName, set, Val).
 
 %% @doc Append to a stat's value.
 append(Client, StatName, Val) ->
-    rts_state_vnode:append(get_idxnode(Client, StatName), StatName, Val).
+    do_write(Client, StatName, append, Val).
 
 %% @doc Increment the stat's value by 1.
 incr(Client, StatName) ->
-    ReqID = mk_reqid(),
-    rts_write_fsm_sup:start_write_fsm([ReqID, self(), Client, StatName, incr]),
-    wait_for_reqid(ReqID, ?TIMEOUT).
+    do_write(Client, StatName, incr).
 
 incr_debug_preflist(Client, StatName) ->
     DocIdx = riak_core_util:chash_key({list_to_binary(Client),
@@ -63,19 +61,24 @@ incr_debug_preflist(Client, StatName) ->
 
 %% @doc Increment the stat's value by Val.
 incrby(Client, StatName, Val) ->
-    rts_stat_vnode:incrby(get_idxnode(Client, StatName), StatName, Val).
+    do_write(Client, StatName, incrby, Val).
 
 %% @doc Add a memeber to the stat's set.
 sadd(Client, StatName, Val) ->
-    rts_stat_vnode:sadd(get_idxnode(Client, StatName), StatName, Val).
+    do_write(Client, StatName, sadd, Val).
 
 %%%===================================================================
 %%% Internal Functions
 %%%===================================================================
+do_write(Client, StatName, Op) ->
+    ReqID = mk_reqid(),
+    rts_write_fsm_sup:start_write_fsm([ReqID, self(), Client, StatName, Op]),
+    wait_for_reqid(ReqID, ?TIMEOUT).
 
-get_idxnode(Client, StatName) ->
-    DocIdx = riak_core_util:chash_key({list_to_binary(Client), list_to_binary(StatName)}),
-    hd(riak_core_apl:get_apl(DocIdx, 1, rts_stat)).
+do_write(Client, StatName, Op, Val) ->
+    ReqID = mk_reqid(),
+    rts_write_fsm_sup:start_write_fsm([ReqID, self(), Client, StatName, Op, Val]),
+    wait_for_reqid(ReqID, ?TIMEOUT).
 
 mk_reqid() -> erlang:phash2(erlang:now()).
 

@@ -68,9 +68,14 @@ prepare(timeout, SD0=#state{client=Client,
 execute(timeout, SD0=#state{req_id=ReqID,
                             stat_name=StatName,
                             op=Op,
-                            val=undefined,
+                            val=Val,
                             preflist=Preflist}) ->
-    rts_stat_vnode:Op(Preflist, ReqID, StatName),
+    case Val of
+        undefined ->
+            rts_stat_vnode:Op(Preflist, ReqID, StatName);
+        _ ->
+            rts_stat_vnode:Op(Preflist, ReqID, StatName, Val)
+    end,
     {next_state, waiting, SD0}.
 
 %% @doc Wait for W write reqs to respond.

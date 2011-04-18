@@ -20,6 +20,148 @@ To wrap up, a coordinator
 
 * communicates with the vnode instances to execute the request
 
+
+Implementing a Coordinator
+----------
+
+Unlike the vnode, Riak Core doesn't define a coordinator behavior.  You have to roll your own each time.  I used Riak's [get](https://github.com/basho/riak_kv/blob/master/src/riak_kv_get_fsm.erl) and [put](https://github.com/basho/riak_kv/blob/master/src/riak_kv_put_fsm.erl) coordinators for guidenace.  You'll notice they're both have a similar structure.  I'm going to propose a general structure here that you can use as your guide, but remember that there's nothing set in stone on how to write a coordinator.
+
+### init(Args) -> {ok, InitialState, SD, Timeout} ###
+
+    Args = term()
+    InitialState = atom()
+    SD = term()
+    Timeout = integer()
+
+This is actually part of the `gen_fsm` behavior, ie it's a callback you must implement.  It's job is to specify the `InitialState` name and it's data (`SD`).  In this case you'll also want to specify a `Timeout` value of `0` in order to immediately go to the initial state, `prepare`.
+
+A get coordinator for RTS is passed four arguments.
+
+1. `ReqId`: A unique id for this request.
+
+2. `From`: Who to send the reply to.
+
+3. `Client`: The name of the client entity.  Ie the entity that is writing log events to RTS.
+
+4. `StatName`: The name of the statistic the requestor is interested in.
+
+All this data will be passed as a list to init and the only work that needs to be done is to build the initial state record and tell the FSM to proceed to the `prepare` state.
+
+    init([ReqId, From, Client, StatName]) ->
+        SD = #state{req_id=ReqId,
+                    from=From,
+                    client=Client,
+                    stat_name=StatName},
+        {ok, prepare, SD, 0}.
+
+The write coordinator for RTs is very similair but has two additional arguments.
+
+1. `Op`: The operation to be perfomed, one of `set`, `append`, `incr`,
+`incrby` or `sadd`.
+
+2. `Val`: The value of the operation.  For the `incr` op this is `undefined`.
+
+    init([ReqID, From, Client, StatName, Op, Val]) ->
+        SD = #state{req_id=ReqID,
+                    from=From,
+                client=Client,
+                stat_name=StatName,
+                op=Op,
+                    val=Val},
+        {ok, prepare, SD, 0}.
+
+
+### prepare(timeout, SD0) -> {next_state, NextState, SD, Timeout} ###
+
+    SD0 = SD = term()
+    NextState = atom()
+    Timeout = integer()
+
+The job of `prepare` is to build the _preference list_.  The preference list is the preferred set of partitions from the ring that should participate in this request.  Most of the work is actually done by `riak_core_util:chash_key/1` and `riak_core_apl:get_apl/3`.  Both the get and write coordinators do the same thing here.
+
+1. Calculate the index in the ring that this request falls on.
+
+2. From this index determine the `N` preferred partitions that should handle the request.
+
+    prepare(timeout, SD0=#state{client=Client,
+                                stat_name=StatName}) ->
+        DocIdx = riak_core_util:chash_key({list_to_binary(Client),
+                                           list_to_binary(StatName)}),
+        Prelist = riak_core_apl:get_apl(DocIdx, ?N, rts_stat),
+        SD = SD0#state{preflist=Prelist},
+        {next_state, execute, SD, 0}.
+
+The fact that the key is a two-tuple is simply a consequence of the fact that Riak Core was extracted from Riak and some of it's key-value semantics crossed during the extraction.  In the future things like this may change.
+
+### execute(timeout, SD0) -> {next_state, NextState, SD} ###
+
+    SD0 = SD = term()
+    NextState = atom()
+
+The `execute` state executes the request by sending commands to the preferred partitions and then putting the coordinator into a waiting state.  The code to do this in RTS is really simple; simply call the vnode command passing it the preference list.
+
+Here's the code for the get coordinator.
+
+    execute(timeout, SD0=#state{req_id=ReqId,
+                                stat_name=StatName,
+                                preflist=Prelist}) ->
+        rts_stat_vnode:get(Prelist, ReqId, StatName),
+        {next_state, waiting, SD0}.
+
+The code for the write coordinator is basically identical.
+
+    execute(timeout, SD0=#state{req_id=ReqID,
+                            stat_name=StatName,
+                            op=Op,
+                            val=undefined,
+                            preflist=Preflist}) ->
+        rts_stat_vnode:Op(Preflist, ReqID, StatName),
+        {next_state, waiting, SD0}.
+
+
+### waiting(Reply, SD0) -> Result ###
+
+    Reply = {ok, ReqID}
+    Result = {next_state, NextState, SD}
+           | {stop, normal, SD}
+    NextState = atom()
+    SD0 = SD = term()
+
+This is probably the most interesting state in the coordinator as it's job is to enforce the consistnecy requirements and possibly perform anti-entropy in the case of a get.  The coordinator waits for replies from the various vnode instances it called in `execute` state and stops once it's requirements have been met.  The typical shape of this function is to pattern match on the `Reply`, check the state data `SD0`, and then either continue waiting or stop depending on the current state data.
+
+The get coordinator waits for replies with the correct `ReqId`, increments the reply count and adds the `Val` to the list of `Replies`.  If the quorum `R` has been met then return the `Val` to the requestor and stop the coordinator.  If the vnodes didn't agree on the value then return all observed values.  In this case I am punting on the anti-entropy part of the coordinator and exposing the inconsistent state to the client application.  In a future post I'll implement read repair.  If the quorum hasn't been met then continue waiting for more replies.
+
+    waiting({ok, ReqID, Val}, SD0=#state{from=From, num_r=NumR0, replies=Replies0}) ->
+        NumR = NumR0 + 1,
+        Replies = [Val|Replies0],
+        SD = SD0#state{num_r=NumR,replies=Replies},
+        if
+            NumR =:= ?R ->
+                Reply =
+                    case lists:any(different(Val), Replies) of
+                        true ->
+                            Replies;
+                        false ->
+                            Val
+                    end,
+                From ! {ReqID, ok, Reply},
+                {stop, normal, SD};
+            true -> {next_state, waiting, SD}
+        end.
+
+The write coordinator has things a little easier here cause all it cares about is knowing that `W` vnodes executed it's write request.
+
+    waiting({ok, ReqID}, SD0=#state{from=From, num_w=NumW0}) ->
+        NumW = NumW0 + 1,
+        SD = SD0#state{num_w=NumW},
+        if
+        NumW =:= ?W ->
+                From ! {ReqID, ok},
+                {stop, normal, SD};
+        true -> {next_state, waiting, SD}
+        end.
+
+
 WARNING
 ----------
 

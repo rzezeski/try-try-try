@@ -6,14 +6,14 @@
 -include("rts.hrl").
 
 %% API
--export([start_link/5]).
+-export([start_link/5, start_link/6]).
 
 %% Callbacks
 -export([init/1, code_change/4, handle_event/3, handle_info/3,
          handle_sync_event/4, terminate/3]).
 
 %% States
--export([prepare/2, execute/2, wait/2]).
+-export([prepare/2, execute/2, waiting/2]).
 
 %% req_id: The request id so the caller can verify the response.
 %%
@@ -31,55 +31,57 @@
 %% num_w: The number of successful write replies.
 -record(state, {req_id :: pos_integer(),
                 from :: pid(),
-		client :: string(),
-		stat_name :: string(),
-		op :: atom(),
-		val = undefined :: term() | undefined,
-		preflist :: riak_core_apl:preflist2(),
-		num_w = 0 :: non_neg_integer()}).
+                client :: string(),
+                stat_name :: string(),
+                op :: atom(),
+                val = undefined :: term() | undefined,
+                preflist :: riak_core_apl:preflist2(),
+                num_w = 0 :: non_neg_integer()}).
 
 start_link(ReqID, From, Client, StatName, Op) ->
-    gen_fsm:start_link(?MODULE, [ReqID, From, Client, StatName, Op], []).
+    start_link(ReqID, From, Client, StatName, Op, undefined).
+
+start_link(ReqID, From, Client, StatName, Op, Val) ->
+    gen_fsm:start_link(?MODULE, [ReqID, From, Client, StatName, Op, Val], []).
 
 %% @doc Initialize the state data.
-init([ReqID, From, Client, StatName, Op]) ->
+init([ReqID, From, Client, StatName, Op, Val]) ->
     SD = #state{req_id=ReqID,
                 from=From,
-		client=Client,
-		stat_name=StatName,
-		op=Op},
+                client=Client,
+                stat_name=StatName,
+                op=Op,
+                val=Val},
     {ok, prepare, SD, 0}.
 
 %% @doc Prepare the write by calculating the _preference list_.
 prepare(timeout, SD0=#state{client=Client,
-			    stat_name=StatName}) ->
+                            stat_name=StatName}) ->
     DocIdx = riak_core_util:chash_key({list_to_binary(Client),
                                        list_to_binary(StatName)}),
-    %% TODO: Force to be across 2 different physical nodes or fail
-    %% request -- if I want to hold try to Dynamo
     Preflist = riak_core_apl:get_apl(DocIdx, ?N, rts_stat),
     SD = SD0#state{preflist=Preflist},
     {next_state, execute, SD, 0}.
 
-%% @doc Execute the write request and then go into wait state to
+%% @doc Execute the write request and then go into waiting state to
 %% verify it has meets consistency requirements.
 execute(timeout, SD0=#state{req_id=ReqID,
-			    stat_name=StatName,
-			    op=Op,
-			    val=undefined,
-			    preflist=Preflist}) ->
+                            stat_name=StatName,
+                            op=Op,
+                            val=undefined,
+                            preflist=Preflist}) ->
     rts_stat_vnode:Op(Preflist, ReqID, StatName),
-    {next_state, wait, SD0}.
+    {next_state, waiting, SD0}.
 
 %% @doc Wait for W write reqs to respond.
-wait({ok, ReqID}, SD0=#state{from=From, num_w=NumW0}) ->
+waiting({ok, ReqID}, SD0=#state{from=From, num_w=NumW0}) ->
     NumW = NumW0 + 1,
     SD = SD0#state{num_w=NumW},
     if
-	NumW =:= ?W ->
+        NumW =:= ?W ->
             From ! {ReqID, ok},
             {stop, normal, SD};
-	true -> {next_state, wait, SD}
+        true -> {next_state, waiting, SD}
     end.
 
 handle_info(_Info, _StateName, StateData) ->

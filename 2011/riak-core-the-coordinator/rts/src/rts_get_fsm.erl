@@ -13,7 +13,7 @@
          handle_sync_event/4, terminate/3]).
 
 %% States
--export([prepare/2, execute/2, wait/2]).
+-export([prepare/2, execute/2, waiting/2]).
 
 -record(state, {req_id,
                 from,
@@ -48,12 +48,12 @@ execute(timeout, SD0=#state{req_id=ReqId,
                             stat_name=StatName,
                             preflist=Prelist}) ->
     rts_stat_vnode:get(Prelist, ReqId, StatName),
-    {next_state, wait, SD0}.
+    {next_state, waiting, SD0}.
 
 %% @doc Wait for R replies and then respond to From (original client
 %% that called `rts:get/2').
 %% TODO: read repair...or another blog post?
-wait({ok, ReqID, Val}, SD0=#state{from=From, num_r=NumR0, replies=Replies0}) ->
+waiting({ok, ReqID, Val}, SD0=#state{from=From, num_r=NumR0, replies=Replies0}) ->
     NumR = NumR0 + 1,
     Replies = [Val|Replies0],
     SD = SD0#state{num_r=NumR,replies=Replies},
@@ -68,9 +68,7 @@ wait({ok, ReqID, Val}, SD0=#state{from=From, num_r=NumR0, replies=Replies0}) ->
                 end,
             From ! {ReqID, ok, Reply},
             {stop, normal, SD};
-        %% TODO: This could cause process leaks b/c FSM never times
-        %% out...waits forever...tsk tsk Ryan
-        true -> {next_state, wait, SD}
+        true -> {next_state, waiting, SD}
     end.
 
 handle_info(_Info, _StateName, StateData) ->

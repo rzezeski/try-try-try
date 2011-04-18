@@ -26,6 +26,8 @@ Implementing a Coordinator
 
 Unlike the vnode, Riak Core doesn't define a coordinator behavior.  You have to roll your own each time.  I used Riak's [get](https://github.com/basho/riak_kv/blob/master/src/riak_kv_get_fsm.erl) and [put](https://github.com/basho/riak_kv/blob/master/src/riak_kv_put_fsm.erl) coordinators for guidenace.  You'll notice they're both have a similar structure.  I'm going to propose a general structure here that you can use as your guide, but remember that there's nothing set in stone on how to write a coordinator.
 
+Before moving forward it's worth mentioning that you'll want to instantiate these coordinators under a `simple_one_for_one` supervisor.  If you've never heard of `simple_one_for_one` before then think of it as a factory for Erlang processes of the same type.  An incoming request will at some point call `supervisor:start_child/2` to instantiate a new FSM dedicated to handling this specific request.
+
 ### init(Args) -> {ok, InitialState, SD, Timeout} ###
 
     Args = term()

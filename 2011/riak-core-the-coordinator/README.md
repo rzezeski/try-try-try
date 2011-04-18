@@ -1,6 +1,25 @@
 Riak Core, The Coordinator
 ==========
 
+What is a Coordinator?
+----------
+
+Logically speaking, a _coordinator_ is just what it sounds like.  It's job is to coordinate incoming requests.  It enforces the consistency semantics of [N, R and W](http://wiki.basho.com/Riak-Glossary.html#Quorum) and performs anti-entropy services like [read repair](http://wiki.basho.com/Riak-Glossary.html#Read-Repair).  In simpler terms, it's responsible for distributing data across the cluster and re-syncing data when it finds conflicts.  You could think of vnodes as the things that Get Shit Done (TM) and the coordinators as the other things telling them what to do and overseeing the work.  They work in tandem to make sure your request is behind handled as best as it can.
+
+To be more concrete a coordinator is a [gen_fsm](http://www.erlang.org/doc/man/gen_fsm.html).  Each request is handled in it's own Erlang process.  A coordinator communicates with the vnode instances to fulfill requests.
+
+To wrap up, a coordinator
+
+* coordinates requests
+
+* enforces the consistency requirements
+
+* performs anti-entropy
+
+* is an Erlang process that implements the `gen_fsm` behavior
+
+* communicates with the vnode instances to execute the request
+
 WARNING
 ----------
 

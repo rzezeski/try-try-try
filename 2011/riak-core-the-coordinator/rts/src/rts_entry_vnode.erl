@@ -22,7 +22,8 @@
          handoff_cancelled/1,
          handoff_finished/2,
          handle_handoff_data/2,
-         encode_handoff_item/2]).
+         encode_handoff_item/2,
+         handle_exit/3]).
 
 %% match handlers
 -export([
@@ -90,6 +91,9 @@ is_empty(State) ->
 
 delete(State) ->
     {ok, State}.
+
+handle_exit(_Pid, _Reason, _State) ->
+    {noreply, _State}.
 
 terminate(_Reason, _State) ->
     ok.

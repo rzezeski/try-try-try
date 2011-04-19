@@ -306,3 +306,9 @@ In both cases either `rts2` or `rts3` stepped in for the missing `rts1`.  Also, 
      not_found]
 
 Notice the fallbacks are at the end of each list.  Also notice that since we're on `rts2` that `total_reqs` will almost always return a single value because it's fallback is on another node whereas `GET` has a local fallback and will be more likely to return first.
+
+
+Conflict Resolution & Read Repair
+----------
+
+In the next post I'll be making several enhancements to the get coordinator by performing basic conflict resolution and implementing read repair.

@@ -1,12 +1,7 @@
 Riak Core, The Coordinator
 ==========
 
-WARNING
-----------
-
-**READ THE FOLLOWING AT YOUR OWN RISK...STILL A WORK IN PROGRESS AND MAY COMPLETELY CHANGE**
-
-At the end of my [vnode](https://github.com/rzezeski/try-try-try/tree/master/2011/riak-core-the-vnode) post I asked the question _Where's the redundancy?_  There is none in RTS, thus far.  Riak Core isn't magic but rather a suite of tools for building distirbuted, highly available systems.  You have to build your own redundancy.  In this post I'll talk about the _coordinator_ and show how to implement one.
+At the end of my [vnode](https://github.com/rzezeski/try-try-try/tree/master/2011/riak-core-the-vnode) post I asked the question _Where's the redundancy?_  There is none in RTS, thus far.  Riak Core isn't magic but rather a suite of tools for building distributed, highly available systems.  You have to build your own redundancy.  In this post I'll talk about the _coordinator_ and show how to implement one.
 
 
 What is a Coordinator?
@@ -32,7 +27,7 @@ To wrap up, a coordinator
 Implementing a Coordinator
 ----------
 
-Unlike the vnode, Riak Core doesn't define a coordinator behavior.  You have to roll your own each time.  I used Riak's [get](https://github.com/basho/riak_kv/blob/master/src/riak_kv_get_fsm.erl) and [put](https://github.com/basho/riak_kv/blob/master/src/riak_kv_put_fsm.erl) coordinators for guidenace.  You'll notice they're both have a similar structure.  I'm going to propose a general structure here that you can use as your guide, but remember that there's nothing set in stone on how to write a coordinator.
+Unlike the vnode, Riak Core doesn't define a coordinator behavior.  You have to roll your own each time.  I used Riak's [get](https://github.com/basho/riak_kv/blob/master/src/riak_kv_get_fsm.erl) and [put](https://github.com/basho/riak_kv/blob/master/src/riak_kv_put_fsm.erl) coordinators for guidance.  You'll notice they're both have a similar structure.  I'm going to propose a general structure here that you can use as your guide, but remember that there's nothing set in stone on how to write a coordinator.
 
 Before moving forward it's worth mentioning that you'll want to instantiate these coordinators under a `simple_one_for_one` supervisor.  If you've never heard of `simple_one_for_one` before then think of it as a factory for Erlang processes of the same type.  An incoming request will at some point call `supervisor:start_child/2` to instantiate a new FSM dedicated to handling this specific request.
 
@@ -43,7 +38,7 @@ Before moving forward it's worth mentioning that you'll want to instantiate thes
     SD = term()
     Timeout = integer()
 
-This is actually part of the `gen_fsm` behavior, ie it's a callback you must implement.  It's job is to specify the `InitialState` name and it's data (`SD`).  In this case you'll also want to specify a `Timeout` value of `0` in order to immediately go to the initial state, `prepare`.
+This is actually part of the `gen_fsm` behavior, i.e. it's a callback you must implement.  It's job is to specify the `InitialState` name and it's data (`SD`).  In this case you'll also want to specify a `Timeout` value of `0` in order to immediately go to the initial state, `prepare`.
 
 A get coordinator for RTS is passed four arguments.
 
@@ -51,9 +46,9 @@ A get coordinator for RTS is passed four arguments.
 
 2. `From`: Who to send the reply to.
 
-3. `Client`: The name of the client entity.  Ie the entity that is writing log events to RTS.
+3. `Client`: The name of the client entity.  I.e. the entity that is writing log events to RTS.
 
-4. `StatName`: The name of the statistic the requestor is interested in.
+4. `StatName`: The name of the statistic the requester is interested in.
 
 All this data will be passed as a list to init and the only work that needs to be done is to build the initial state record and tell the FSM to proceed to the `prepare` state.
 
@@ -64,9 +59,9 @@ All this data will be passed as a list to init and the only work that needs to b
                     stat_name=StatName},
         {ok, prepare, SD, 0}.
 
-The write coordinator for RTs is very similair but has two additional arguments.
+The write coordinator for RTS is very similar but has two additional arguments.
 
-1. `Op`: The operation to be perfomed, one of `set`, `append`, `incr`,
+1. `Op`: The operation to be performed, one of `set`, `append`, `incr`,
 `incrby` or `sadd`.
 
 2. `Val`: The value of the operation.  For the `incr` op this is `undefined`.
@@ -137,9 +132,9 @@ The code for the write coordinator is basically identical.
     NextState = atom()
     SD0 = SD = term()
 
-This is probably the most interesting state in the coordinator as it's job is to enforce the consistnecy requirements and possibly perform anti-entropy in the case of a get.  The coordinator waits for replies from the various vnode instances it called in `execute` state and stops once it's requirements have been met.  The typical shape of this function is to pattern match on the `Reply`, check the state data `SD0`, and then either continue waiting or stop depending on the current state data.
+This is probably the most interesting state in the coordinator as it's job is to enforce the consistency requirements and possibly perform anti-entropy in the case of a get.  The coordinator waits for replies from the various vnode instances it called in `execute` state and stops once it's requirements have been met.  The typical shape of this function is to pattern match on the `Reply`, check the state data `SD0`, and then either continue waiting or stop depending on the current state data.
 
-The get coordinator waits for replies with the correct `ReqId`, increments the reply count and adds the `Val` to the list of `Replies`.  If the quorum `R` has been met then return the `Val` to the requestor and stop the coordinator.  If the vnodes didn't agree on the value then return all observed values.  In this case I am punting on the anti-entropy part of the coordinator and exposing the inconsistent state to the client application.  In a future post I'll implement read repair.  If the quorum hasn't been met then continue waiting for more replies.
+The get coordinator waits for replies with the correct `ReqId`, increments the reply count and adds the `Val` to the list of `Replies`.  If the quorum `R` has been met then return the `Val` to the requester and stop the coordinator.  If the vnodes didn't agree on the value then return all observed values.  In this case I am punting on the anti-entropy part of the coordinator and exposing the inconsistent state to the client application.  In a future post I'll implement read repair.  If the quorum hasn't been met then continue waiting for more replies.
 
     waiting({ok, ReqID, Val}, SD0=#state{from=From, num_r=NumR0, replies=Replies0}) ->
         NumR = NumR0 + 1,
@@ -175,7 +170,7 @@ The write coordinator has things a little easier here cause all it cares about i
 What About the Entry Coordinator?
 ----------
 
-Some of you may be wondering why I didn't write a coordinator for the [entry vnode](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-the-coordinator/rts/src/rts_entry_vnode.erl)?  If you don't remember this is responsbile for matching an incoming log entry and then executing it's trigger function.  For example, any incoming log entry from an access log in combined logging format will cause the `total_reqs` stat to be incremented by one.  I only want this action to occur at maximum once per entry.  Adding a coordinator would be pointless because I'm interested only it's side effect and it has no notion of `N`.  This means that if a entry vnode crashes while in the middle of processing an entry then that information will be lost. For the purposes of this application that is **just fine with me**.
+Some of you may be wondering why I didn't write a coordinator for the [entry vnode](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-the-coordinator/rts/src/rts_entry_vnode.erl)?  If you don't remember this is responsible for matching an incoming log entry and then executing it's trigger function.  For example, any incoming log entry from an access log in combined logging format will cause the `total_reqs` stat to be incremented by one.  I only want this action to occur at maximum once per entry.  Adding a coordinator would be pointless because I'm interested only it's side effect and it has no notion of `N`.  This means that if a entry vnode crashes while in the middle of processing an entry then that information will be lost. For the purposes of this application that is **just fine with me**.
 
 
 Coordinators in Action
@@ -261,7 +256,7 @@ You're results my not exactly match mine as it depends on which vnode instances 
 
 ### Let's Compare the Before and After Preflist ###
 
-Notice that some gets on `rts2` return a single value as before whereas others return a list of values.  The reason for this is because the `Preflist` calculation is now including _fallback_ vnodes.  A fallback vnode is one that is not on it's appropriate physical node.  Since we killed `rts1` it's vnode requests must be routed somewhere else.  That somewhere else is a fallback vnode.  Since the request-reply model between the coordinator and vnode's is asynchronous our reply value will depend on which vnode instances reply first.  If the instances with values reply first then you get a single value, otherwise you get a list of values.  My next post will improve this behavior slightly to take advantage of the fact that we **know** there are still two nodes with the data and there should be no reason to return conflicting values.
+Notice that some gets on `rts2` return a single value as before whereas others return a list of values.  The reason for this is because the `Preflist` calculation is now including _fallback_ vnodes.  A fallback vnode is one that is not on it's appropriate physical node.  Since we killed `rts1` it's vnode requests must be routed somewhere else.  That somewhere else is a fallback vnode.  Since the request-reply model between the coordinator and vnode is asynchronous our reply value will depend on which vnode instances reply first.  If the instances with values reply first then you get a single value, otherwise you get a list of values.  My next post will improve this behavior slightly to take advantage of the fact that we **know** there are still two nodes with the data and there should be no reason to return conflicting values.
 
     (rts2@127.0.0.1)6> rts:get_dbg_preflist("progski", "total_reqs"). 
     [{730750818665451459101842416358141509827966271488,

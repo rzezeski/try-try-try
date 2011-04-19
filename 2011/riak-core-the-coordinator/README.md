@@ -170,3 +170,10 @@ The write coordinator has things a little easier here cause all it cares about i
                 {stop, normal, SD};
         true -> {next_state, waiting, SD}
         end.
+
+
+What About the Entry Coordinator?
+----------
+
+Some of you may be wondering why I didn't write a coordinator for the [entry vnode](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-the-coordinator/rts/src/rts_entry_vnode.erl)?  If you don't remember this is responsbile for matching an incoming log entry and then executing it's trigger function.  For example, any incoming log entry from an access log in combined logging format will cause the `total_reqs` stat to be incremented by one.  I only want this action to occur at maximum once per entry.  Adding a coordinator would be pointless because I'm interested only it's side effect and it has no notion of `N`.  This means that if a entry vnode crashes while in the middle of processing an entry then that information will be lost. For the purposes of this application that is **just fine with me**.
+

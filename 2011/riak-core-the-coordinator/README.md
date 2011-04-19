@@ -177,3 +177,132 @@ What About the Entry Coordinator?
 
 Some of you may be wondering why I didn't write a coordinator for the [entry vnode](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-the-coordinator/rts/src/rts_entry_vnode.erl)?  If you don't remember this is responsbile for matching an incoming log entry and then executing it's trigger function.  For example, any incoming log entry from an access log in combined logging format will cause the `total_reqs` stat to be incremented by one.  I only want this action to occur at maximum once per entry.  Adding a coordinator would be pointless because I'm interested only it's side effect and it has no notion of `N`.  This means that if a entry vnode crashes while in the middle of processing an entry then that information will be lost. For the purposes of this application that is **just fine with me**.
 
+
+Coordinators in Action
+----------
+
+Talk is cheap, lets see it in action.  Towards the end of the vnode post I made the following statement.
+
+> If you start taking down nodes you'll find that stats start to disappear.
+
+One of the main objectives of the coordinator is to fix this problem.  Lets see if it worked.
+
+### Build the devrel ###
+
+    make
+    make devrel
+
+### Start the Cluster ###
+
+    for d in dev/dev*; do $d/bin/rts start; done
+    for d in dev/dev{2,3}; do $d/bin/rts-admin join rts1@127.0.0.1; done
+
+### Feed in Some Data ###
+
+    gunzip -c progski.access.log.gz | head -100 | ./replay --devrel progski
+
+### Get Some Stats ###
+
+    ./dev/dev1/bin/rts attach
+    (rts1@127.0.0.1)1> rts:get("progski", "total_reqs").
+    {ok,97}
+    (rts1@127.0.0.1)2> rts:get("progski", "GET").       
+    {ok,91}
+    (rts1@127.0.0.1)3> rts:get("progski", "total_sent").
+    {ok,445972}
+    (rts1@127.0.0.1)4> rts:get("progski", "HEAD").      
+    {ok,6}
+    (rts1@127.0.0.1)5> rts:get("progski", "PUT").  
+    {ok,not_found}
+    (rts1@127.0.0.1)6> rts:get_dbg_preflist("progski", "total_reqs"). 
+    [{730750818665451459101842416358141509827966271488,
+      'rts3@127.0.0.1'},
+     {753586781748746817198774991869333432010090217472,
+      'rts1@127.0.0.1'},
+     {776422744832042175295707567380525354192214163456,
+      'rts2@127.0.0.1'}]
+    (rts1@127.0.0.1)7> rts:get_dbg_preflist("progski", "GET").       
+    [{274031556999544297163190906134303066185487351808,
+      'rts1@127.0.0.1'},
+     {296867520082839655260123481645494988367611297792,
+      'rts2@127.0.0.1'},
+     {319703483166135013357056057156686910549735243776,
+      'rts3@127.0.0.1'}]
+
+Don't worry about what I did on lines 6 and 7 yet, I'll explain in a second.
+
+### Kill a Node ###
+
+    (rts1@127.0.0.1)8> os:getpid().
+    "91461"
+    Ctrl^D
+    kill -9 91461
+
+### Verify it's Down ###
+
+    $ ./dev/dev1/bin/rts ping
+    Node 'rts1@127.0.0.1' not responding to pings.
+
+### Get Stats on rts2 ###
+
+You're results my not exactly match mine as it depends on which vnode instances responded first.  That is, the coordinator only cares about getting 
+
+    ./dev/dev2/bin/rts attach
+    (rts2@127.0.0.1)1> rts:get("progski", "total_reqs").
+    {ok,97}
+    (rts2@127.0.0.1)2> rts:get("progski", "GET").       
+    {ok,[not_found,91]}
+    (rts2@127.0.0.1)3> rts:get("progski", "total_sent").
+    {ok,445972}
+    (rts2@127.0.0.1)4> rts:get("progski", "HEAD").      
+    {ok,[not_found,6]}
+    (rts2@127.0.0.1)5> rts:get("progski", "PUT"). 
+    {ok,not_found}
+
+### Let's Compare the Before and After Preflist ###
+
+Notice that some gets on `rts2` return a single value as before whereas others return a list of values.  The reason for this is because the `Preflist` calculation is now including _fallback_ vnodes.  A fallback vnode is one that is not on it's appropriate physical node.  Since we killed `rts1` it's vnode requests must be routed somewhere else.  That somewhere else is a fallback vnode.  Since the request-reply model between the coordinator and vnode's is asynchronous our reply value will depend on which vnode instances reply first.  If the instances with values reply first then you get a single value, otherwise you get a list of values.  My next post will improve this behavior slightly to take advantage of the fact that we **know** there are still two nodes with the data and there should be no reason to return conflicting values.
+
+    (rts2@127.0.0.1)6> rts:get_dbg_preflist("progski", "total_reqs"). 
+    [{730750818665451459101842416358141509827966271488,
+      'rts3@127.0.0.1'},
+     {776422744832042175295707567380525354192214163456,
+      'rts2@127.0.0.1'},
+     {753586781748746817198774991869333432010090217472,
+      'rts3@127.0.0.1'}]
+    (rts2@127.0.0.1)7> rts:get_dbg_preflist("progski", "GET").       
+    [{296867520082839655260123481645494988367611297792,
+      'rts2@127.0.0.1'},
+     {319703483166135013357056057156686910549735243776,
+      'rts3@127.0.0.1'},
+     {274031556999544297163190906134303066185487351808,
+      'rts2@127.0.0.1'}]
+
+In both cases either `rts2` or `rts3` stepped in for the missing `rts1`.  Also, in each case, one of these vnodes is going to return `not_found` since it's a fallback.  I added another debug function to determine which one.
+
+    (rts2@127.0.0.1)8> rts:get_dbg_preflist("progski", "total_reqs", 1).
+    [{730750818665451459101842416358141509827966271488,
+      'rts3@127.0.0.1'},
+     97]
+    (rts2@127.0.0.1)9> rts:get_dbg_preflist("progski", "total_reqs", 2). 
+    [{776422744832042175295707567380525354192214163456,
+      'rts2@127.0.0.1'},
+     97]
+    (rts2@127.0.0.1)10> rts:get_dbg_preflist("progski", "total_reqs", 3).
+    [{753586781748746817198774991869333432010090217472,
+      'rts3@127.0.0.1'},
+     not_found]
+    (rts2@127.0.0.1)11> rts:get_dbg_preflist("progski", "GET", 1).       
+    [{296867520082839655260123481645494988367611297792,
+      'rts2@127.0.0.1'},
+     91]
+    (rts2@127.0.0.1)12> rts:get_dbg_preflist("progski", "GET", 2).
+    [{319703483166135013357056057156686910549735243776,
+      'rts3@127.0.0.1'},
+     91]
+    (rts2@127.0.0.1)13> rts:get_dbg_preflist("progski", "GET", 3).
+    [{274031556999544297163190906134303066185487351808,
+      'rts2@127.0.0.1'},
+     not_found]
+
+Notice the fallbacks are at the end of each list.  Also notice that since we're on `rts2` that `total_reqs` will almost always return a single value because it's fallback is on another node whereas `GET` has a local fallback and will be more likely to return first.

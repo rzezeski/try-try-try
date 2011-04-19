@@ -38,8 +38,7 @@ entry(Client, Entry) ->
 
 %% @doc Get a stat's value.
 get(Client, StatName) ->
-    ReqID = mk_reqid(),
-    rts_get_fsm_sup:start_get_fsm([ReqID, self(), Client, StatName]),
+    {ok, ReqID} = rts_get_fsm:get(Client, StatName),
     wait_for_reqid(ReqID, ?TIMEOUT).
 
 get_dbg_preflist(Client, StatName) ->
@@ -79,16 +78,12 @@ sadd(Client, StatName, Val) ->
 %%% Internal Functions
 %%%===================================================================
 do_write(Client, StatName, Op) ->
-    ReqID = mk_reqid(),
-    rts_write_fsm_sup:start_write_fsm([ReqID, self(), Client, StatName, Op]),
+    {ok, ReqID} = rts_write_fsm:write(Client, StatName, Op),
     wait_for_reqid(ReqID, ?TIMEOUT).
 
 do_write(Client, StatName, Op, Val) ->
-    ReqID = mk_reqid(),
-    rts_write_fsm_sup:start_write_fsm([ReqID, self(), Client, StatName, Op, Val]),
+    {ok, ReqID} = rts_write_fsm:write(Client, StatName, Op, Val),
     wait_for_reqid(ReqID, ?TIMEOUT).
-
-mk_reqid() -> erlang:phash2(erlang:now()).
 
 wait_for_reqid(ReqID, Timeout) ->
     receive

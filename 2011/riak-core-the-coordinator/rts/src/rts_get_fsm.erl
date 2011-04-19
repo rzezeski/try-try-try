@@ -6,7 +6,7 @@
 -include("rts.hrl").
 
 %% API
--export([start_link/4]).
+-export([start_link/4, get/2]).
 
 %% Callbacks
 -export([init/1, code_change/4, handle_event/3, handle_info/3,
@@ -23,8 +23,21 @@
                 num_r=0,
                 replies=[]}).
 
+%%%===================================================================
+%%% API
+%%%===================================================================
+
 start_link(ReqID, From, Client, StatName) ->
     gen_fsm:start_link(?MODULE, [ReqID, From, Client, StatName], []).
+
+get(Client, StatName) ->
+    ReqID = mk_reqid(),
+    rts_get_fsm_sup:start_get_fsm([ReqID, self(), Client, StatName]),
+    {ok, ReqID}.
+
+%%%===================================================================
+%%% States
+%%%===================================================================
 
 %% Intiailize state data.
 init([ReqId, From, Client, StatName]) ->
@@ -90,3 +103,5 @@ terminate(_Reason, _SN, _SD) ->
 %%%===================================================================
 
 different(A) -> fun(B) -> A =/= B end.
+
+mk_reqid() -> erlang:phash2(erlang:now()).

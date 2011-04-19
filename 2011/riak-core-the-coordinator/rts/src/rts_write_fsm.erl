@@ -6,7 +6,7 @@
 -include("rts.hrl").
 
 %% API
--export([start_link/5, start_link/6]).
+-export([start_link/5, start_link/6, write/3, write/4]).
 
 %% Callbacks
 -export([init/1, code_change/4, handle_event/3, handle_info/3,
@@ -38,11 +38,27 @@
                 preflist :: riak_core_apl:preflist2(),
                 num_w = 0 :: non_neg_integer()}).
 
+%%%===================================================================
+%%% API
+%%%===================================================================
+
 start_link(ReqID, From, Client, StatName, Op) ->
     start_link(ReqID, From, Client, StatName, Op, undefined).
 
 start_link(ReqID, From, Client, StatName, Op, Val) ->
     gen_fsm:start_link(?MODULE, [ReqID, From, Client, StatName, Op, Val], []).
+
+write(Client, StatName, Op) ->
+    write(Client, StatName, Op, undefined).
+
+write(Client, StatName, Op, Val) ->
+    ReqID = mk_reqid(),
+    rts_write_fsm_sup:start_write_fsm([ReqID, self(), Client, StatName, Op, Val]),
+    {ok, ReqID}.
+
+%%%===================================================================
+%%% States
+%%%===================================================================
 
 %% @doc Initialize the state data.
 init([ReqID, From, Client, StatName, Op, Val]) ->
@@ -102,3 +118,9 @@ code_change(_OldVsn, StateName, State, _Extra) -> {ok, StateName, State}.
 
 terminate(_Reason, _SN, _SD) ->
     ok.
+
+%%%===================================================================
+%%% Internal Functions
+%%%===================================================================
+
+mk_reqid() -> erlang:phash2(erlang:now()).

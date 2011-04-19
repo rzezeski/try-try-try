@@ -13,8 +13,8 @@
          incrby/3,
          sadd/3
         ]).
--export([incr_debug_preflist/2]).
-
+-export([get_dbg_preflist/2,
+         get_dbg_preflist/3]).
 -define(TIMEOUT, 5000).
 
 %%%===================================================================
@@ -42,6 +42,19 @@ get(Client, StatName) ->
     rts_get_fsm_sup:start_get_fsm([ReqID, self(), Client, StatName]),
     wait_for_reqid(ReqID, ?TIMEOUT).
 
+get_dbg_preflist(Client, StatName) ->
+    DocIdx = riak_core_util:chash_key({list_to_binary(Client),
+                                       list_to_binary(StatName)}),
+    riak_core_apl:get_apl(DocIdx, ?N, rts_stat).
+
+get_dbg_preflist(Client, StatName, N) ->
+    IdxNode = lists:nth(N, get_dbg_preflist(Client, StatName)),
+    {ok, req_id, Val} =
+        riak_core_vnode_master:sync_command(IdxNode,
+                                            {get, req_id, StatName},
+                                            rts_stat_vnode_master),
+    [IdxNode, Val].
+
 %% @doc Set a stat's value, replacing the current value.
 set(Client, StatName, Val) ->
     do_write(Client, StatName, set, Val).
@@ -53,11 +66,6 @@ append(Client, StatName, Val) ->
 %% @doc Increment the stat's value by 1.
 incr(Client, StatName) ->
     do_write(Client, StatName, incr).
-
-incr_debug_preflist(Client, StatName) ->
-    DocIdx = riak_core_util:chash_key({list_to_binary(Client),
-                                       list_to_binary(StatName)}),
-    io:format("Preflist: ~p~n", [riak_core_apl:get_apl(DocIdx, 3, rts_stat)]).
 
 %% @doc Increment the stat's value by Val.
 incrby(Client, StatName, Val) ->

@@ -177,6 +177,51 @@ What About the Entry Coordinator?
 Some of you may be wondering why I didn't write a coordinator for the [entry vnode](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-the-coordinator/rts/src/rts_entry_vnode.erl)?  If you don't remember this is responsible for matching an incoming log entry and then executing it's trigger function.  For example, any incoming log entry from an access log in combined logging format will cause the `total_reqs` stat to be incremented by one.  I only want this action to occur at maximum once per entry.  Adding a coordinator would be pointless because I'm interested only it's side effect and it has no notion of `N`.  This means that if a entry vnode crashes while in the middle of processing an entry then that information will be lost. For the purposes of this application that is **just fine with me**.
 
 
+Changes to rts.erl and rts_stat_vnode
+----------
+
+Now that we've written coordinators to handle requests to RTS we need to refactor the old [rts.erl](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-the-vnode/rts/src/rts.erl) and [rts_stat_vnode](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-the-vnode/rts/src/rts_stat_vnode.erl).  The model has changed from rts calling the vnode directly to delegating the work to [rts_get_fsm](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-the-coordinator/rts/src/rts_get_fsm.erl) which will call the various vnodes and collect responses.
+
+    rts:get ----> rts_stat_vnode:get (local)
+
+                                     /--> rts_stat_vnode:get (rts1)
+    rts:get ----> rts_get_fsm:get --|---> rts_stat_vnode:get (rts2)
+                                     \--> rts_stat_vnode:get (rts3)
+
+
+Instead of performing a synchronous request the `rts:get/2` function now calls the get coordinator and then waits for a response.
+
+    get(Client, StatName) ->
+        {ok, ReqID} = rts_get_fsm:get(Client, StatName),
+        wait_for_reqid(ReqID, ?TIMEOUT).
+
+The write requests underwent a similar refactoring.
+
+    do_write(Client, StatName, Op) ->
+        {ok, ReqID} = rts_write_fsm:write(Client, StatName, Op),
+        wait_for_reqid(ReqID, ?TIMEOUT).
+
+    do_write(Client, StatName, Op, Val) ->
+        {ok, ReqID} = rts_write_fsm:write(Client, StatName, Op, Val),
+        wait_for_reqid(ReqID, ?TIMEOUT).
+
+The `rts_stat_vnode` was refactored to use `riak_core_vnode_master:command/4` which takes a `Preflist`, `Msg`, `Sender` and `VMaster` as argument.
+
+`Preflist`: The list of vnodes to send the command to.
+
+`Msg`: The command to send.
+
+`Sender`: A value describing who sent the request, in this case the coordinator.  This is used by the vnode to correctly address the reply message.
+
+`VMaster`: The name of the vnode master for the vnode type to send this command to.
+
+    get(Preflist, ReqID, StatName) ->
+        riak_core_vnode_master:command(Preflist,
+                                       {get, ReqID, StatName},
+                                       {fsm, undefined, self()},
+                                       ?MASTER).
+
+
 Coordinators in Action
 ----------
 

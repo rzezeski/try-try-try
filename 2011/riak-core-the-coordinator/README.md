@@ -7,7 +7,7 @@ At the end of my [vnode](https://github.com/rzezeski/try-try-try/tree/master/201
 What is a Coordinator?
 ----------
 
-Logically speaking, a _coordinator_ is just what it sounds like.  It's job is to coordinate incoming requests.  It enforces the consistency semantics of [N, R and W](http://wiki.basho.com/Riak-Glossary.html#Quorum) and performs anti-entropy services like [read repair](http://wiki.basho.com/Riak-Glossary.html#Read-Repair).  In simpler terms, it's responsible for distributing data across the cluster and re-syncing data when it finds conflicts.  You could think of vnodes as the things that Get Shit Done (TM) and the coordinators as the other things telling them what to do and overseeing the work.  They work in tandem to make sure your request is behind handled as best as it can.
+Logically speaking, a _coordinator_ is just what it sounds like.  It's job is to coordinate incoming requests.  It enforces the consistency semantics of [N, R and W](http://wiki.basho.com/Riak-Glossary.html#Quorum) and performs anti-entropy services like [read repair](http://wiki.basho.com/Riak-Glossary.html#Read-Repair).  In simpler terms, it's responsible for distributing data across the cluster and re-syncing data when it finds conflicts.  You could think of vnodes as the things that Get Shit Done (TM) and the coordinators as the other things telling them what to do and overseeing the work.  They work in tandem to make sure your request is being handled as best as it can.
 
 To be more concrete a coordinator is a [gen_fsm](http://www.erlang.org/doc/man/gen_fsm.html).  Each request is handled in it's own Erlang process.  A coordinator communicates with the vnode instances to fulfill requests.
 
@@ -21,15 +21,15 @@ To wrap up, a coordinator
 
 * is an Erlang process that implements the `gen_fsm` behavior
 
-* communicates with the vnode instances to execute the request
+* and communicates with the vnode instances to execute the request
 
 
 Implementing a Coordinator
 ----------
 
-Unlike the vnode, Riak Core doesn't define a coordinator behavior.  You have to roll your own each time.  I used Riak's [get](https://github.com/basho/riak_kv/blob/master/src/riak_kv_get_fsm.erl) and [put](https://github.com/basho/riak_kv/blob/master/src/riak_kv_put_fsm.erl) coordinators for guidance.  You'll notice they're both have a similar structure.  I'm going to propose a general structure here that you can use as your guide, but remember that there's nothing set in stone on how to write a coordinator.
+Unlike the vnode, Riak Core doesn't define a coordinator behavior.  You have to roll your own each time.  I used Riak's [get](https://github.com/basho/riak_kv/blob/master/src/riak_kv_get_fsm.erl) and [put](https://github.com/basho/riak_kv/blob/master/src/riak_kv_put_fsm.erl) coordinators for guidance.  You'll notice they both have a similar structure.  I'm going to propose a general structure here that you can use as your guide, but remember that there's nothing set in stone on how to write a coordinator.
 
-Before moving forward it's worth mentioning that you'll want to instantiate these coordinators under a `simple_one_for_one` supervisor.  If you've never heard of `simple_one_for_one` before then think of it as a factory for Erlang processes of the same type.  An incoming request will at some point call `supervisor:start_child/2` to instantiate a new FSM dedicated to handling this specific request.
+Before moving forward it's worth mentioning that you'll want to instantiate these coordinators under a [simple_one_for_one](http://www.erlang.org/doc/design_principles/sup_princ.html#id69831) supervisor.  If you've never heard of `simple_one_for_one` before then think of it as a factory for Erlang processes of the same type.  An incoming request will at some point call `supervisor:start_child/2` to instantiate a new FSM dedicated to handling this specific request.
 
 ### init(Args) -> {ok, InitialState, SD, Timeout} ###
 
@@ -84,7 +84,7 @@ Here is the code.
     NextState = atom()
     Timeout = integer()
 
-The job of `prepare` is to build the _preference list_.  The preference list is the preferred set of vnodes should participate in this request.  Most of the work is actually done by `riak_core_util:chash_key/1` and `riak_core_apl:get_apl/3`.  Both the get and write coordinators do the same thing here.
+The job of `prepare` is to build the _preference list_.  The preference list is the preferred set of vnodes that should participate in this request.  Most of the work is actually done by `riak_core_util:chash_key/1` and `riak_core_apl:get_apl/3`.  Both the get and write coordinators do the same thing here.
 
 1. Calculate the index in the ring that this request falls on.
 
@@ -107,7 +107,7 @@ The fact that the key is a two-tuple is simply a consequence of the fact that Ri
     SD0 = SD = term()
     NextState = atom()
 
-The `execute` state executes the request by sending commands to the vnodes in the preflist and then putting the coordinator into a waiting state.  The code to do this in RTS is really simple; call the vnode command passing it the preference list.
+The `execute` state executes the request by sending commands to the vnodes in the preflist and then putting the coordinator into a waiting state.  The code to do this in RTS is really simple; call the vnode command passing it the preference list.  Under the covers the vnode has been changed to use `riak_core_vnode_master:command/4` which will distribute the commands across the `Preflist` for you.  I'll talk about this later in the post.
 
 Here's the code for the get coordinator.
 
@@ -138,7 +138,7 @@ The code for the write coordinator is almost identical except it's parameterized
 
 This is probably the most interesting state in the coordinator as it's job is to enforce the consistency requirements and possibly perform anti-entropy in the case of a get.  The coordinator waits for replies from the various vnode instances it called in `execute` and stops once it's requirements have been met.  The typical shape of this function is to pattern match on the `Reply`, check the state data `SD0`, and then either continue waiting or stop depending on the current state data.
 
-The get coordinator waits for replies with the correct `ReqId`, increments the reply count and adds the `Val` to the list of `Replies`.  If the quorum `R` has been met then return the `Val` to the requester and stop the coordinator.  If the vnodes didn't agree on the value then return all observed values.  In this case I am punting on the anti-entropy part of the coordinator and exposing the inconsistent state to the client application.  In a future post I'll implement read repair.  If the quorum hasn't been met then continue waiting for more replies.
+The get coordinator waits for replies with the correct `ReqId`, increments the reply count and adds the `Val` to the list of `Replies`.  If the quorum `R` has been met then return the `Val` to the requester and stop the coordinator.  If the vnodes didn't agree on the value then return all observed values.  In this post I am punting on the conflict resolution and anti-entropy part of the coordinator and exposing the inconsistent state to the client application.  I'll implement them in my next post.  If the quorum hasn't been met then continue waiting for more replies.
 
     waiting({ok, ReqID, Val}, SD0=#state{from=From, num_r=NumR0, replies=Replies0}) ->
         NumR = NumR0 + 1,
@@ -174,7 +174,7 @@ The write coordinator has things a little easier here cause all it cares about i
 What About the Entry Coordinator?
 ----------
 
-Some of you may be wondering why I didn't write a coordinator for the [entry vnode](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-the-coordinator/rts/src/rts_entry_vnode.erl)?  If you don't remember this is responsible for matching an incoming log entry and then executing it's trigger function.  For example, any incoming log entry from an access log in combined logging format will cause the `total_reqs` stat to be incremented by one.  I only want this action to occur at maximum once per entry.  Adding a coordinator would be pointless because I'm interested only it's side effect and it has no notion of `N`.  This means that if a entry vnode crashes while in the middle of processing an entry then that information will be lost. For the purposes of this application that is **just fine with me**.
+Some of you may be wondering why I didn't write a coordinator for the [entry vnode](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-the-coordinator/rts/src/rts_entry_vnode.erl)?  If you don't remember this is responsible for matching an incoming log entry and then executing it's trigger function.  For example, any incoming log entry from an access log in combined logging format will cause the `total_reqs` stat to be incremented by one.  I only want this action to occur at maximum once per entry.  There is no notion of `N`.  I could write a coordinator that tries to make some guarentees about it's execution but for now I'm ok with possibly dropping data occasionally.
 
 
 Changes to rts.erl and rts_stat_vnode

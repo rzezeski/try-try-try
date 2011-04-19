@@ -1,0 +1,13 @@
+{application, rts,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib,
+                  riak_core
+                 ]},
+  {mod, { rts_app, []}},
+  {env, []}
+ ]}.

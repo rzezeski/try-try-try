@@ -38,7 +38,7 @@ Before moving forward it's worth mentioning that you'll want to instantiate thes
     SD = term()
     Timeout = integer()
 
-This is actually part of the `gen_fsm` behavior, i.e. it's a callback you must implement.  It's job is to specify the `InitialState` name and it's data (`SD`).  In this case you'll also want to specify a `Timeout` value of `0` in order to immediately go to the initial state, `prepare`.
+This is actually part of the `gen_fsm` behavior, i.e. it's a callback you must implement.  It's job is to specify the `InitialState` name and it's data (`SD`).  In this case you'll also want to specify a `Timeout` value of `0` in order to immediately go to the `InitialState`, `prepare`.
 
 A get coordinator for RTS is passed four arguments.
 
@@ -46,7 +46,7 @@ A get coordinator for RTS is passed four arguments.
 
 2. `From`: Who to send the reply to.
 
-3. `Client`: The name of the client entity.  I.e. the entity that is writing log events to RTS.
+3. `Client`: The name of the client entity -- the entity that is writing log events to RTS.
 
 4. `StatName`: The name of the statistic the requester is interested in.
 
@@ -66,12 +66,14 @@ The write coordinator for RTS is very similar but has two additional arguments.
 
 2. `Val`: The value of the operation.  For the `incr` op this is `undefined`.
 
+Here is the code.
+
     init([ReqID, From, Client, StatName, Op, Val]) ->
         SD = #state{req_id=ReqID,
                     from=From,
-                client=Client,
-                stat_name=StatName,
-                op=Op,
+                    client=Client,
+                    stat_name=StatName,
+                    op=Op,
                     val=Val},
         {ok, prepare, SD, 0}.
 
@@ -82,11 +84,13 @@ The write coordinator for RTS is very similar but has two additional arguments.
     NextState = atom()
     Timeout = integer()
 
-The job of `prepare` is to build the _preference list_.  The preference list is the preferred set of partitions from the ring that should participate in this request.  Most of the work is actually done by `riak_core_util:chash_key/1` and `riak_core_apl:get_apl/3`.  Both the get and write coordinators do the same thing here.
+The job of `prepare` is to build the _preference list_.  The preference list is the preferred set of vnodes should participate in this request.  Most of the work is actually done by `riak_core_util:chash_key/1` and `riak_core_apl:get_apl/3`.  Both the get and write coordinators do the same thing here.
 
 1. Calculate the index in the ring that this request falls on.
 
 2. From this index determine the `N` preferred partitions that should handle the request.
+
+Here is the code.
 
     prepare(timeout, SD0=#state{client=Client,
                                 stat_name=StatName}) ->
@@ -103,7 +107,7 @@ The fact that the key is a two-tuple is simply a consequence of the fact that Ri
     SD0 = SD = term()
     NextState = atom()
 
-The `execute` state executes the request by sending commands to the preferred partitions and then putting the coordinator into a waiting state.  The code to do this in RTS is really simple; simply call the vnode command passing it the preference list.
+The `execute` state executes the request by sending commands to the vnodes in the preflist and then putting the coordinator into a waiting state.  The code to do this in RTS is really simple; call the vnode command passing it the preference list.
 
 Here's the code for the get coordinator.
 
@@ -113,7 +117,7 @@ Here's the code for the get coordinator.
         rts_stat_vnode:get(Prelist, ReqId, StatName),
         {next_state, waiting, SD0}.
 
-The code for the write coordinator is basically identical.
+The code for the write coordinator is almost identical except it's parameterized on `Op`.
 
     execute(timeout, SD0=#state{req_id=ReqID,
                             stat_name=StatName,
@@ -132,7 +136,7 @@ The code for the write coordinator is basically identical.
     NextState = atom()
     SD0 = SD = term()
 
-This is probably the most interesting state in the coordinator as it's job is to enforce the consistency requirements and possibly perform anti-entropy in the case of a get.  The coordinator waits for replies from the various vnode instances it called in `execute` state and stops once it's requirements have been met.  The typical shape of this function is to pattern match on the `Reply`, check the state data `SD0`, and then either continue waiting or stop depending on the current state data.
+This is probably the most interesting state in the coordinator as it's job is to enforce the consistency requirements and possibly perform anti-entropy in the case of a get.  The coordinator waits for replies from the various vnode instances it called in `execute` and stops once it's requirements have been met.  The typical shape of this function is to pattern match on the `Reply`, check the state data `SD0`, and then either continue waiting or stop depending on the current state data.
 
 The get coordinator waits for replies with the correct `ReqId`, increments the reply count and adds the `Val` to the list of `Replies`.  If the quorum `R` has been met then return the `Val` to the requester and stop the coordinator.  If the vnodes didn't agree on the value then return all observed values.  In this case I am punting on the anti-entropy part of the coordinator and exposing the inconsistent state to the client application.  In a future post I'll implement read repair.  If the quorum hasn't been met then continue waiting for more replies.
 
@@ -240,7 +244,7 @@ Don't worry about what I did on lines 6 and 7 yet, I'll explain in a second.
 
 ### Get Stats on rts2 ###
 
-You're results my not exactly match mine as it depends on which vnode instances responded first.  That is, the coordinator only cares about getting 
+You're results my not exactly match mine as it depends on which vnode instances responded first.  The coordinator only cares about getting `R` responses.
 
     ./dev/dev2/bin/rts attach
     (rts2@127.0.0.1)1> rts:get("progski", "total_reqs").

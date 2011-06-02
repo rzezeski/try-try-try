@@ -1,0 +1,6 @@
+*.beam
+.eunit
+deps/*
+ebin
+rel/rts
+dev

@@ -7,6 +7,7 @@
          ping/0,
          entry/2,
          get/2,
+         get/3,
          set/3,
          append/3,
          incr/2,
@@ -38,21 +39,29 @@ entry(Client, Entry) ->
 
 %% @doc Get a stat's value.
 get(Client, StatName) ->
-    {ok, ReqID} = rts_get_fsm:get(Client, StatName),
+    {ok, ReqID} = rts_get_fsm:get(Client, StatName, []),
+    wait_for_reqid(ReqID, ?TIMEOUT).
+
+get(Client, StatName, Opts) ->
+    {ok, ReqID} = rts_get_fsm:get(Client, StatName, Opts),
     wait_for_reqid(ReqID, ?TIMEOUT).
 
 get_dbg_preflist(Client, StatName) ->
-    DocIdx = riak_core_util:chash_key({list_to_binary(Client),
-                                       list_to_binary(StatName)}),
-    riak_core_apl:get_apl(DocIdx, ?N, rts_stat).
+    %% DocIdx = riak_core_util:chash_key({list_to_binary(Client),
+    %%                                    list_to_binary(StatName)}),
+    %% riak_core_apl:get_apl(DocIdx, ?N, rts_stat).
+    [get_dbg_preflist(Client, StatName, N) || N <- lists:seq(1,3)].
 
 get_dbg_preflist(Client, StatName, N) ->
-    IdxNode = lists:nth(N, get_dbg_preflist(Client, StatName)),
-    {ok, req_id, Val} =
+    DocIdx = riak_core_util:chash_key({list_to_binary(Client),
+                                       list_to_binary(StatName)}),
+    Preflist = riak_core_apl:get_apl(DocIdx, ?N, rts_stat),
+    IdxNode = lists:nth(N, Preflist),
+    {ok, req_id, _, Val} =
         riak_core_vnode_master:sync_command(IdxNode,
                                             {get, req_id, StatName},
                                             rts_stat_vnode_master),
-    [IdxNode, Val].
+    {IdxNode, Val}.
 
 %% @doc Set a stat's value, replacing the current value.
 set(Client, StatName, Val) ->

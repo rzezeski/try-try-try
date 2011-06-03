@@ -22,13 +22,14 @@
 -export([
          get/3,
          set/4,
+         repair/3,
          incr/3,
          incrby/4,
          append/4,
          sadd/4
         ]).
 
--record(state, {partition, stats}).
+-record(state, {partition, stats, node}).
 
 -define(MASTER, rts_stat_vnode_master).
 -define(sync(PrefList, Command, Master),
@@ -50,6 +51,13 @@ get(Preflist, ReqID, StatName) ->
 set(Preflist, ReqID, StatName, Val) ->
     riak_core_vnode_master:command(Preflist,
                                    {set, ReqID, StatName, Val},
+                                   ?MASTER).
+
+%% @doc Attempt to repair -- fire and forget.
+repair(IdxNode, StateName, Val) ->
+    riak_core_vnode_master:command(IdxNode,
+                                   {set, undefined, StateName, Val},
+                                   ignore,
                                    ?MASTER).
 
 %% TODO: I have to look at the Sender stuff more closely again
@@ -80,9 +88,10 @@ sadd(Preflist, ReqID, StatName, Val) ->
 %%%===================================================================
 
 init([Partition]) ->
-    {ok, #state { partition=Partition, stats=dict:new() }}.
+    {ok, #state { partition=Partition, stats=dict:new(), node=node() }}.
 
-handle_command({get, ReqID, StatName}, _Sender, #state{stats=Stats}=State) ->
+handle_command({get, ReqID, StatName}, _Sender,
+               #state{stats=Stats, partition=Partition, node=Node}=State) ->
     Reply =
         case dict:find(StatName, Stats) of
             error ->
@@ -90,7 +99,7 @@ handle_command({get, ReqID, StatName}, _Sender, #state{stats=Stats}=State) ->
             {ok, Found} ->
                 Found
         end,
-    {reply, {ok, ReqID, Reply}, State};
+    {reply, {ok, ReqID, {Partition,Node}, Reply}, State};
 
 handle_command({set, ReqID, StatName, Val}, _Sender, #state{stats=Stats0}=State) ->
     Stats = dict:store(StatName, Val, Stats0),

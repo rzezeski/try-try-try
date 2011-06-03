@@ -3,3 +3,5 @@
 -define(N, 3).
 -define(R, 2).
 -define(W, 2).
+
+-define(DEFAULT_TIMEOUT, 10000).

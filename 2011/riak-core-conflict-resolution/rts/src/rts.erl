@@ -14,8 +14,10 @@
          incrby/3,
          sadd/3
         ]).
+
 -export([get_dbg_preflist/2,
-         get_dbg_preflist/3]).
+         get_dbg_preflist/3,
+         dbg_incr/4]).
 -define(TIMEOUT, 5000).
 
 %%%===================================================================
@@ -83,6 +85,21 @@ incrby(Client, StatName, Val) ->
 sadd(Client, StatName, Val) ->
     do_write(Client, StatName, sadd, Val).
 
+%% @doc Fake a partitioned write to the given `Nodes' from the given
+%% `Coordinator'.  That is, this write will act as if the given nodes
+%% are partitioned from the rest of the cluster.  Let the replies fall
+%% on the caller's mailbox.
+dbg_incr(Coordinator, Nodes, Client, StatName) ->
+    ReqID = mk_reqid(),
+    DocIdx = riak_core_util:chash_key({list_to_binary(Client),
+                                       list_to_binary(StatName)}),
+    Preflist = riak_core_apl:get_apl(DocIdx, ?N, rts_stat),
+    P = fun({_Idx,Node}) ->
+                lists:member(Node, Nodes)
+        end,
+    Targets = lists:filter(P, Preflist),
+    rts_stat_vnode:incr(Targets, {ReqID, Coordinator}, StatName).
+
 %%%===================================================================
 %%% Internal Functions
 %%%===================================================================
@@ -101,3 +118,5 @@ wait_for_reqid(ReqID, Timeout) ->
     after Timeout ->
 	    {error, timeout}
     end.
+
+mk_reqid() -> erlang:phash2(erlang:now()).

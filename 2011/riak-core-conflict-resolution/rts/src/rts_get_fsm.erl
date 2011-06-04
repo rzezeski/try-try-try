@@ -15,6 +15,8 @@
 %% States
 -export([prepare/2, execute/2, waiting/2, wait_for_n/2, finalize/2]).
 
+-export([incr_reconcile/2, incrby_reconcile/2]).
+
 -record(state, {req_id,
                 from,
                 client,
@@ -26,6 +28,7 @@
                 timeout=?DEFAULT_TIMEOUT}).
 
 -type idx_node() :: {integer(), node()}.
+-type vnode_reply() :: {idx_node(), rts_obj() | not_found}.
 
 %%%===================================================================
 %%% API
@@ -71,16 +74,16 @@ execute(timeout, SD0=#state{req_id=ReqId,
 
 %% @doc Wait for R replies and then respond to From (original client
 %% that called `rts:get/2').
-waiting({ok, ReqID, IdxNode, Val},
+waiting({ok, ReqID, IdxNode, Obj},
         SD0=#state{from=From, num_r=NumR0, replies=Replies0,
                    r=R, timeout=Timeout}) ->
     NumR = NumR0 + 1,
-    Replies = [{IdxNode,Val}|Replies0],
+    Replies = [{IdxNode, Obj}|Replies0],
     SD = SD0#state{num_r=NumR,replies=Replies},
 
     if
         NumR =:= R ->
-            Reply = merge(Replies),
+            Reply = rts_obj:val(merge(Replies)),
             From ! {ReqID, ok, Reply},
 
             if NumR =:= ?N -> {next_state, finalize, SD, 0};
@@ -89,28 +92,28 @@ waiting({ok, ReqID, IdxNode, Val},
         true -> {next_state, waiting, SD}
     end.
 
-wait_for_n({ok, _ReqID, IdxNode, Val},
+wait_for_n({ok, _ReqID, IdxNode, Obj},
              SD0=#state{num_r=?N - 1, replies=Replies0, stat_name=_StatName}) ->
-    Replies = [{IdxNode, Val}|Replies0],
+    Replies = [{IdxNode, Obj}|Replies0],
     {next_state, finalize, SD0#state{num_r=?N, replies=Replies}, 0};
 
-wait_for_n({ok, _ReqID, IdxNode, Val},
+wait_for_n({ok, _ReqID, IdxNode, Obj},
              SD0=#state{num_r=NumR0, replies=Replies0,
                         stat_name=_StatName, timeout=Timeout}) ->
     NumR = NumR0 + 1,
-    Replies = [{IdxNode, Val}|Replies0],
+    Replies = [{IdxNode, Obj}|Replies0],
     {next_state, wait_for_n, SD0#state{num_r=NumR, replies=Replies}, Timeout};
 
 %% TODO partial repair?
 wait_for_n(timeout, SD) ->
     {stop, timeout, SD}.
 
+%% TODO Looks like I'm merging twice
 finalize(timeout, SD=#state{replies=Replies, stat_name=StatName}) ->
-    M = merge(Replies),
-    case needs_repair(M, Replies) of
+    MObj = merge(Replies),
+    case needs_repair(MObj, Replies) of
         true ->
-            error_logger:error_msg("repair performed~n"),
-            repair(StatName, M, Replies),
+            repair(StatName, MObj, Replies),
             {stop, normal, SD};
         false ->
             {stop, normal, SD}
@@ -134,39 +137,95 @@ terminate(_Reason, _SN, _SD) ->
 %%% Internal Functions
 %%%===================================================================
 
-%% pure
-different(A) -> fun({_,B}) -> A =/= B end.
-
-%% not pure
+%% @impure
 mk_reqid() -> erlang:phash2(erlang:now()).
 
-%% pure
--spec merge([{idx_node(), A::any()}]) -> A::any() | not_found.
+%% @pure
+%%
+%% @doc Given a list of `Replies' return the merged value.
+-spec merge([vnode_reply()]) -> rts_obj() | not_found.
 merge(Replies) ->
-    case [A || {_, A} <- Replies, A /= not_found] of
+    case rm_not_found(Replies) of
         [] -> not_found;
-        [A] -> A;
         As ->
-            case unique(As) of
-                [A] -> A;
-                [A|_] -> A
-            end
+            NodeObjs = [{Node, Obj} || {{_,Node}, Obj} <- As],
+            Objs = [Obj || {_,Obj} <- NodeObjs],
+            Type = element(1, hd(Objs)),
+            RecFun = proplists:get_value(rec_fun, rts_obj:meta(hd(Objs))),
+            rts_obj:reconcile(Type, ?MODULE:RecFun(node(), NodeObjs), Objs)
     end.
 
+default(Node, VClock) ->
+    case vclock:get_counter(Node, VClock) of
+        undefined -> 0;
+        Val -> Val
+    end.
+
+%% @pure
+%%
+%% @doc Reconcile conflicts between `incrby' values.
+incrby_reconcile(_Me, _Replies) ->
+    fun([Obj|_]) -> Obj end.
+
+%% @pure
+%%
+%% @doc Reconcile conflicts between `incr' values.
+-spec incr_reconcile(node(), [vnode_reply()]) -> reconcile_fun().
+incr_reconcile(Me, Replies) ->
+    fun(Siblings) ->
+            
+            {_, #rts_vclock{val=Val0, vclock=LVC}=Local} =
+                lists:keyfind(Me, 1, Replies),
+            VCs = [rts_obj:vclock(O) || O <- Siblings],
+            Nodes = unique(lists:flatten([vclock:all_nodes(VC) || VC <- VCs])) -- [Me],
+            Counts = [{Node, [default(Node, VC) || VC <- VCs]}
+                      || Node <- Nodes],
+            Max = [{Node, lists:max(Cs)} || {Node, Cs} <- Counts],
+
+            X = lists:sum([proplists:get_value(N, Max) - default(N, LVC)
+                           || N <- Nodes,
+                              proplists:get_value(N, Max, 0) > default(N, LVC)]),
+            MergedVC = vclock:merge(VCs),
+            Local#rts_vclock{val=Val0 + X, vclock=MergedVC}
+    end.
+
+%% @pure
+%%
+%% @doc Given the merged object `MObj' and a list of `Replies'
+%% determine if repair is needed.
+-spec needs_repair(any(), [vnode_reply()]) -> boolean().
+needs_repair(MObj, Replies) ->
+    Objs = [Obj || {_,Obj} <- Replies],
+    lists:any(different(MObj), Objs).
+
+%% @pure
+different(A) -> fun(B) -> not rts_obj:equal(A,B) end.
+
+%% @impure
+%%
+%% @doc Repair any vnodes that do not have the correct object.
+-spec repair(string(), rts_obj(), [vnode_reply()]) -> io.
+repair(_, _, []) -> io;
+
+repair(StatName, MObj, [{IdxNode,Obj}|T]) ->
+    case rts_obj:equal(MObj, Obj) of
+        true -> repair(StatName, MObj, T);
+        false ->
+            rts_stat_vnode:repair(IdxNode, StatName, MObj),
+            repair(StatName, MObj, T)
+    end.
+
+%% @pure
+%%
+%% @doc Filter out all `not_found' replies as they are considered
+%% ancestors of all other values.
+-spec rm_not_found([vnode_reply()]) -> [vnode_reply()].
+rm_not_found(Replies) ->
+    [R || {_, O} = R <- Replies, O /= not_found].
+
 %% pure
+%%
+%% @doc Given a list return the set of unique values.
 -spec unique([A::any()]) -> [A::any()].
 unique(L) ->
     sets:to_list(sets:from_list(L)).
-
-%% pure
--spec needs_repair(A::any(), [{idx_node(), A::any()}]) -> boolean().
-needs_repair(M, Replies) ->
-    lists:any(different(M), Replies).
-
-%% not pure
--spec repair(string(), A::any(), [{idx_node(), A::any()}]) -> io.
-repair(_, _, [])           -> io;
-repair(StatName, M, [{_,M}|T])    -> repair(StatName, M, T);
-repair(StatName, M, [{IdxNode,_}|T]) ->
-    rts_stat_vnode:repair(IdxNode, StatName, M),
-    repair(StatName, M, T).

@@ -30,6 +30,7 @@
 %%
 %% num_w: The number of successful write replies.
 -record(state, {req_id :: pos_integer(),
+                cordinator :: node(),
                 from :: pid(),
                 client :: string(),
                 stat_name :: string(),
@@ -63,6 +64,7 @@ write(Client, StatName, Op, Val) ->
 %% @doc Initialize the state data.
 init([ReqID, From, Client, StatName, Op, Val]) ->
     SD = #state{req_id=ReqID,
+                cordinator=node(),
                 from=From,
                 client=Client,
                 stat_name=StatName,
@@ -82,15 +84,16 @@ prepare(timeout, SD0=#state{client=Client,
 %% @doc Execute the write request and then go into waiting state to
 %% verify it has meets consistency requirements.
 execute(timeout, SD0=#state{req_id=ReqID,
+                            cordinator=Cordinator,
                             stat_name=StatName,
                             op=Op,
                             val=Val,
                             preflist=Preflist}) ->
     case Val of
         undefined ->
-            rts_stat_vnode:Op(Preflist, ReqID, StatName);
+            rts_stat_vnode:Op(Preflist, {ReqID, Cordinator}, StatName);
         _ ->
-            rts_stat_vnode:Op(Preflist, ReqID, StatName, Val)
+            rts_stat_vnode:Op(Preflist, {ReqID, Cordinator}, StatName, Val)
     end,
     {next_state, waiting, SD0}.
 

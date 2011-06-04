@@ -48,39 +48,39 @@ get(Preflist, ReqID, StatName) ->
                                    {fsm, undefined, self()},
                                    ?MASTER).
 
-set(Preflist, ReqID, StatName, Val) ->
+set(Preflist, Identity, StatName, Val) ->
     riak_core_vnode_master:command(Preflist,
-                                   {set, ReqID, StatName, Val},
+                                   {set, Identity, StatName, Val},
                                    ?MASTER).
 
 %% @doc Attempt to repair -- fire and forget.
-repair(IdxNode, StateName, Val) ->
+repair(IdxNode, StatName, Obj) ->
     riak_core_vnode_master:command(IdxNode,
-                                   {set, undefined, StateName, Val},
+                                   {repair, undefined, StatName, Obj},
                                    ignore,
                                    ?MASTER).
 
 %% TODO: I have to look at the Sender stuff more closely again
-incr(Preflist, ReqID, StatName) ->
+incr(Preflist, Identity, StatName) ->
     riak_core_vnode_master:command(Preflist,
-                                   {incr, ReqID, StatName},
+                                   {incr, Identity, StatName},
                                    {fsm, undefined, self()},
                                    ?MASTER).
 
-incrby(Preflist, ReqID, StatName, Val) ->
+incrby(Preflist, Identity, StatName, Val) ->
     riak_core_vnode_master:command(Preflist,
-                                   {incrby, ReqID, StatName, Val},
+                                   {incrby, Identity, StatName, Val},
                                    {fsm, undefined, self()},
                                    ?MASTER).
 
-append(Preflist, ReqID, StatName, Val) ->
+append(Preflist, Identity, StatName, Val) ->
     riak_core_vnode_master:command(Preflist,
-                                   {append, ReqID, StatName, Val},
+                                   {append, Identity, StatName, Val},
                                    ?MASTER).
 
-sadd(Preflist, ReqID, StatName, Val) ->
+sadd(Preflist, Identity, StatName, Val) ->
     riak_core_vnode_master:command(Preflist,
-                                   {sadd, ReqID, StatName, Val},
+                                   {sadd, Identity, StatName, Val},
                                    ?MASTER).
 
 %%%===================================================================
@@ -101,25 +101,52 @@ handle_command({get, ReqID, StatName}, _Sender,
         end,
     {reply, {ok, ReqID, {Partition,Node}, Reply}, State};
 
-handle_command({set, ReqID, StatName, Val}, _Sender, #state{stats=Stats0}=State) ->
+handle_command({set, {ReqID, _}, StatName, Val}, _Sender, #state{stats=Stats0}=State) ->
     Stats = dict:store(StatName, Val, Stats0),
     {reply, {ok, ReqID}, State#state{stats=Stats}};
 
-handle_command({incr, ReqID, StatName}, _Sender, #state{stats=Stats0}=State) ->
-    Stats = dict:update_counter(StatName, 1, Stats0),
+handle_command({repair, undefined, StatName, Obj}, _Sender, #state{stats=Stats0}=State) ->
+    error_logger:error_msg("repair performed ~p~n", [Obj]),
+    Stats = dict:store(StatName, Obj, Stats0),
+    {noreply, State#state{stats=Stats}};
+
+handle_command({incr, {ReqID, Cordinator}, StatName}, _Sender,
+               #state{stats=Stats0}=State) ->
+    Obj =
+        case dict:find(StatName, Stats0) of
+            {ok, #rts_vclock{val=Val0, vclock=VClock0}=Obj0} ->
+                Val = Val0 + 1,
+                VClock = vclock:increment(Cordinator, VClock0),
+                Obj0#rts_vclock{val=Val, vclock=VClock};
+            error ->
+                Meta = [{rec_fun, incr_reconcile}],
+                VC0 = vclock:fresh(),
+                VC = vclock:increment(Cordinator, VC0),
+                #rts_vclock{meta=Meta, val=1, vclock=VC}
+        end,
+    Stats = dict:store(StatName, Obj, Stats0),
     {reply, {ok, ReqID}, State#state{stats=Stats}};
 
-handle_command({incrby, ReqID, StatName, Val}, _Sender, #state{stats=Stats0}=State) ->
-    Stats = dict:update_counter(StatName, Val, Stats0),
+handle_command({incrby, {ReqID, _}, StatName, IncrBy}, _Sender, #state{stats=Stats0}=State) ->
+    Obj =
+        case dict:find(StatName, Stats0) of
+            {ok, #rts_basic{val=Val0}=Obj0} ->
+                Val = Val0 + IncrBy,
+                Obj0#rts_basic{val=Val};
+            error ->
+                Meta = [{rec_fun, incrby_reconcile}],
+                #rts_basic{meta=Meta, val=IncrBy}
+        end,
+    Stats = dict:store(StatName, Obj, Stats0),
     {reply, {ok, ReqID}, State#state{stats=Stats}};
 
-handle_command({append, ReqID, StatName, Val}, _Sender, #state{stats=Stats0}=State) ->
+handle_command({append, {ReqID, _}, StatName, Val}, _Sender, #state{stats=Stats0}=State) ->
     Stats = try dict:append(StatName, Val, Stats0)
             catch _:_ -> dict:store(StatName, [Val], Stats0)
             end,
     {reply, {ok, ReqID}, State#state{stats=Stats}};
 
-handle_command({sadd, ReqID, StatName, Val}, _Sender, #state{stats=Stats0}=State) ->
+handle_command({sadd, {ReqID, _}, StatName, Val}, _Sender, #state{stats=Stats0}=State) ->
     F = fun(S) ->
                 sets:add_element(Val, S)
         end,

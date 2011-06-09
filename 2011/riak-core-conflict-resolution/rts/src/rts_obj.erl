@@ -4,7 +4,7 @@
 %% TODO Possibly move type/record defs in there and use accessor funs
 %% and opaque types.
 -module(rts_obj).
--export([ancestors/1, children/1, equal/1, equal/2, reconcile/3, unique/1,
+-export([ancestors/1, children/1, equal/1, equal/2, reconcile/2, unique/1,
          update/3]).
 -export([meta/1, val/1, vclock/1]).
 
@@ -60,20 +60,19 @@ equal(ObjA) ->
 
 %% @pure
 %%
-%% @doc Given a method reconcile the list of objects.
--spec reconcile(reconcile_method(), reconcile_fun(), [rts_obj()]) -> rts_obj().
-reconcile(rts_basic, RecFun, Objs) ->
+%% @doc Reconcile the list of `Objs'.
+-spec reconcile(reconcile_fun(), [rts_obj()]) -> rts_obj().
+reconcile(RecFun, [#rts_basic{}|_]=Objs) ->
     case unique(Objs) of
         [Obj] -> Obj;
         Mult -> RecFun(Mult)
     end;
 
-reconcile(rts_vclock, RecFun, Objs) ->
+reconcile(RecFun, [#rts_vclock{}|_]=Objs) ->
     case rts_obj:children(Objs) of
         [Child] -> Child;
         Chldrn -> RecFun(Chldrn)
     end.
-
 
 %% @pure
 %%

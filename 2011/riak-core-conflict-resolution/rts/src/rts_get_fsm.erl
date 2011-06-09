@@ -150,9 +150,8 @@ merge(Replies) ->
         As ->
             NodeObjs = [{Node, Obj} || {{_,Node}, Obj} <- As],
             Objs = [Obj || {_,Obj} <- NodeObjs],
-            Type = element(1, hd(Objs)),
             RecFun = proplists:get_value(rec_fun, rts_obj:meta(hd(Objs))),
-            rts_obj:reconcile(Type, ?MODULE:RecFun(node(), NodeObjs), Objs)
+            rts_obj:reconcile(?MODULE:RecFun(node(), NodeObjs), Objs)
     end.
 
 default(Node, VClock) ->

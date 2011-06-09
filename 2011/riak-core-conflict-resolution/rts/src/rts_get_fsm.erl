@@ -15,7 +15,7 @@
 %% States
 -export([prepare/2, execute/2, waiting/2, wait_for_n/2, finalize/2]).
 
--export([incr_reconcile/2, incrby_reconcile/2]).
+-export([incr_reconcile/1, incrby_reconcile/1]).
 
 -record(state, {req_id,
                 from,
@@ -149,9 +149,10 @@ merge(Replies) ->
         [] -> not_found;
         As ->
             NodeObjs = [{Node, Obj} || {{_,Node}, Obj} <- As],
+            {_, LocalObj} = lists:keyfind(node(), 1, NodeObjs),
             Objs = [Obj || {_,Obj} <- NodeObjs],
             RecFun = proplists:get_value(rec_fun, rts_obj:meta(hd(Objs))),
-            rts_obj:reconcile(?MODULE:RecFun(node(), NodeObjs), Objs)
+            rts_obj:reconcile(?MODULE:RecFun(LocalObj), Objs)
     end.
 
 default(Node, VClock) ->
@@ -163,20 +164,18 @@ default(Node, VClock) ->
 %% @pure
 %%
 %% @doc Reconcile conflicts between `incrby' values.
-incrby_reconcile(_Me, _Replies) ->
+incrby_reconcile(_LocalObj) ->
     fun([Obj|_]) -> Obj end.
 
 %% @pure
 %%
 %% @doc Reconcile conflicts between `incr' values.
--spec incr_reconcile(node(), [vnode_reply()]) -> reconcile_fun().
-incr_reconcile(Me, Replies) ->
+-spec incr_reconcile(rts_obj()) -> reconcile_fun().
+incr_reconcile(LocalObj) ->
     fun(Siblings) ->
-            
-            {_, #rts_vclock{val=Val0, vclock=LVC}=Local} =
-                lists:keyfind(Me, 1, Replies),
+            #rts_vclock{val=Val0, vclock=LVC} = LocalObj,
             VCs = [rts_obj:vclock(O) || O <- Siblings],
-            Nodes = unique(lists:flatten([vclock:all_nodes(VC) || VC <- VCs])) -- [Me],
+            Nodes = unique(lists:flatten([vclock:all_nodes(VC) || VC <- VCs])) -- [node()],
             Counts = [{Node, [default(Node, VC) || VC <- VCs]}
                       || Node <- Nodes],
             Max = [{Node, lists:max(Cs)} || {Node, Cs} <- Counts],
@@ -185,7 +184,7 @@ incr_reconcile(Me, Replies) ->
                            || N <- Nodes,
                               proplists:get_value(N, Max, 0) > default(N, LVC)]),
             MergedVC = vclock:merge(VCs),
-            Local#rts_vclock{val=Val0 + X, vclock=MergedVC}
+            LocalObj#rts_vclock{val=Val0 + X, vclock=MergedVC}
     end.
 
 %% @pure

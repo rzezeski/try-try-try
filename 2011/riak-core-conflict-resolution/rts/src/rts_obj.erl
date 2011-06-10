@@ -4,7 +4,7 @@
 %% TODO Possibly move type/record defs in there and use accessor funs
 %% and opaque types.
 -module(rts_obj).
--export([ancestors/1, children/1, equal/1, equal/2, reconcile/2, unique/1,
+-export([ancestors/1, children/1, equal/1, equal/2, merge/1, unique/1,
          update/3]).
 -export([meta/1, val/1, vclock/1]).
 
@@ -16,7 +16,8 @@
 %% ancesotrs.  Ancestors are objects that all the other objects in the
 %% list have descent from.
 -spec ancestors([rts_obj()]) -> [rts_obj()].
-ancestors(Objs) ->
+ancestors(Objs0) ->
+    Objs = [O || O <- Objs0, O /= not_found],
     As = [[O2 || O2 <- Objs,
                  ancestor(O2#rts_vclock.vclock,
                           O1#rts_vclock.vclock)] || O1 <- Objs],
@@ -60,18 +61,32 @@ equal(ObjA) ->
 
 %% @pure
 %%
-%% @doc Reconcile the list of `Objs'.
--spec reconcile(reconcile_fun(), [rts_obj()]) -> rts_obj().
-reconcile(RecFun, [#rts_basic{}|_]=Objs) ->
-    case unique(Objs) of
-        [Obj] -> Obj;
-        Mult -> RecFun(Mult)
+%% @doc Merge the list of `Objs', calling the appropriate reconcile
+%% fun if there are siblings.
+-spec merge([rts_obj()]) -> rts_obj().
+merge([not_found|_]=Objs) ->
+    P = fun(X) -> X == not_found end,
+    case lists:all(P, Objs) of
+        true -> not_found;
+        false -> merge(lists:dropwhile(P, Objs))
     end;
 
-reconcile(RecFun, [#rts_vclock{}|_]=Objs) ->
+merge([#rts_basic{}|_]=Objs) ->
+    case unique(Objs) of
+        [] -> not_found;
+        [Obj] -> Obj;
+        Mult -> 
+            {M,F} = proplists:get_value(rec_mf, meta(hd(Mult))),
+            M:F(Mult)
+    end;
+
+merge([#rts_vclock{}|_]=Objs) ->
     case rts_obj:children(Objs) of
+        [] -> not_found;
         [Child] -> Child;
-        Chldrn -> RecFun(Chldrn)
+        Chldrn ->
+            {M,F} = proplists:get_value(rec_mf, meta(hd(Chldrn))),
+            M:F(Chldrn)
     end.
 
 %% @pure
@@ -79,7 +94,9 @@ reconcile(RecFun, [#rts_vclock{}|_]=Objs) ->
 %% @doc Given a list of `Objs' return the list of uniques.
 -spec unique([rts_obj()]) -> [rts_obj()].
 unique(Objs) ->
-    F = fun(Obj, Acc) ->
+    F = fun(not_found, Acc) ->
+                Acc;
+           (Obj, Acc) ->
                 case lists:any(equal(Obj), Acc) of
                     true -> Acc;
                     false -> [Obj|Acc]

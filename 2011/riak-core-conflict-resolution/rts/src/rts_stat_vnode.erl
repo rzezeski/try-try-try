@@ -119,7 +119,7 @@ handle_command({incr, {ReqID, Cordinator}, StatName}, _Sender,
                 VClock = vclock:increment(Cordinator, VClock0),
                 Obj0#rts_vclock{val=Val, vclock=VClock};
             error ->
-                Meta = [{rec_fun, incr_reconcile}],
+                Meta = [{rec_mf, rts_get_fsm, incr_reconcile}],
                 VC0 = vclock:fresh(),
                 VC = vclock:increment(Cordinator, VC0),
                 #rts_vclock{meta=Meta, val=1, vclock=VC}
@@ -134,7 +134,7 @@ handle_command({incrby, {ReqID, _}, StatName, IncrBy}, _Sender, #state{stats=Sta
                 Val = Val0 + IncrBy,
                 Obj0#rts_basic{val=Val};
             error ->
-                Meta = [{rec_fun, incrby_reconcile}],
+                Meta = [{rec_mf, rts_get_fsm, incrby_reconcile}],
                 #rts_basic{meta=Meta, val=IncrBy}
         end,
     Stats = dict:store(StatName, Obj, Stats0),

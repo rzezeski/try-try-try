@@ -145,15 +145,8 @@ mk_reqid() -> erlang:phash2(erlang:now()).
 %% @doc Given a list of `Replies' return the merged value.
 -spec merge([vnode_reply()]) -> rts_obj() | not_found.
 merge(Replies) ->
-    case rm_not_found(Replies) of
-        [] -> not_found;
-        As ->
-            NodeObjs = [{Node, Obj} || {{_,Node}, Obj} <- As],
-            {_, LocalObj} = lists:keyfind(node(), 1, NodeObjs),
-            Objs = [Obj || {_,Obj} <- NodeObjs],
-            RecFun = proplists:get_value(rec_fun, rts_obj:meta(hd(Objs))),
-            rts_obj:reconcile(?MODULE:RecFun(LocalObj), Objs)
-    end.
+    Objs = [Obj || {_,Obj} <- Replies],
+    rts_obj:merge(Objs).
 
 default(Node, VClock) ->
     case vclock:get_counter(Node, VClock) of
@@ -164,28 +157,19 @@ default(Node, VClock) ->
 %% @pure
 %%
 %% @doc Reconcile conflicts between `incrby' values.
-incrby_reconcile(_LocalObj) ->
-    fun([Obj|_]) -> Obj end.
+incrby_reconcile([Obj|_]) -> Obj.
 
 %% @pure
 %%
 %% @doc Reconcile conflicts between `incr' values.
--spec incr_reconcile(rts_obj()) -> reconcile_fun().
-incr_reconcile(LocalObj) ->
-    fun(Siblings) ->
-            #rts_vclock{val=Val0, vclock=LVC} = LocalObj,
-            VCs = [rts_obj:vclock(O) || O <- Siblings],
-            Nodes = unique(lists:flatten([vclock:all_nodes(VC) || VC <- VCs])) -- [node()],
-            Counts = [{Node, [default(Node, VC) || VC <- VCs]}
-                      || Node <- Nodes],
-            Max = [{Node, lists:max(Cs)} || {Node, Cs} <- Counts],
-
-            X = lists:sum([proplists:get_value(N, Max) - default(N, LVC)
-                           || N <- Nodes,
-                              proplists:get_value(N, Max, 0) > default(N, LVC)]),
-            MergedVC = vclock:merge(VCs),
-            LocalObj#rts_vclock{val=Val0 + X, vclock=MergedVC}
-    end.
+-spec incr_reconcile([rts_obj()]) -> rts_obj() | not_found.
+incr_reconcile(Siblings) ->
+    VCs = [rts_obj:vclock(O) || O <- Siblings],
+    Nodes = unique(lists:flatten([vclock:all_nodes(VC) || VC <- VCs])),
+    Val = lists:sum([lists:max([default(Node, VC) || VC <- VCs])
+                     || Node <- Nodes]),
+    MergedVC = vclock:merge(VCs),
+    #rts_vclock{val=Val, vclock=MergedVC}.
 
 %% @pure
 %%
@@ -212,14 +196,6 @@ repair(StatName, MObj, [{IdxNode,Obj}|T]) ->
             rts_stat_vnode:repair(IdxNode, StatName, MObj),
             repair(StatName, MObj, T)
     end.
-
-%% @pure
-%%
-%% @doc Filter out all `not_found' replies as they are considered
-%% ancestors of all other values.
--spec rm_not_found([vnode_reply()]) -> [vnode_reply()].
-rm_not_found(Replies) ->
-    [R || {_, O} = R <- Replies, O /= not_found].
 
 %% pure
 %%

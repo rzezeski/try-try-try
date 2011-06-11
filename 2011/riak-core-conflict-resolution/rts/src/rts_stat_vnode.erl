@@ -26,7 +26,8 @@
          incr/3,
          incrby/4,
          append/4,
-         sadd/4
+         sadd/4,
+         srem/4
         ]).
 
 -record(state, {partition, stats, node}).
@@ -76,11 +77,19 @@ incrby(Preflist, Identity, StatName, Val) ->
 append(Preflist, Identity, StatName, Val) ->
     riak_core_vnode_master:command(Preflist,
                                    {append, Identity, StatName, Val},
+                                   {fsm, undefined, self()},
                                    ?MASTER).
 
 sadd(Preflist, Identity, StatName, Val) ->
     riak_core_vnode_master:command(Preflist,
                                    {sadd, Identity, StatName, Val},
+                                   {fsm, undefined, self()},
+                                   ?MASTER).
+
+srem(Preflist, Identity, StatName, Val) ->
+    riak_core_vnode_master:command(Preflist,
+                                   {srem, Identity, StatName, Val},
+                                   {fsm, undefined, self()},
                                    ?MASTER).
 
 %%%===================================================================
@@ -151,16 +160,30 @@ handle_command({sadd, {ReqID, _}, StatName, Val}, _Sender, #state{stats=Stats0}=
         case dict:find(StatName, Stats0) of
             {ok, #rts_sbox{val=SB0}} ->
                 SB1 = statebox:modify({sets, add_element, [Val]}, SB0),
-                #rts_sbox{val=SB1};
+                SB2 = statebox:expire(?STATEBOX_EXPIRE, SB1),
+                #rts_sbox{val=SB2};
             error ->
                 SB0 = statebox:new(fun sets:new/0),
                 SB1 = statebox:modify({sets, add_element, [Val]}, SB0),
+                #rts_sbox{val=SB1}
+        end,
+    Stats = dict:store(StatName, SB, Stats0),
+    {reply, {ok, ReqID}, State#state{stats=Stats}};
+
+handle_command({srem, {ReqID, _}, StatName, Val}, _Sender, #state{stats=Stats0}=State) ->
+    SB =
+        case dict:find(StatName, Stats0) of
+            {ok, #rts_sbox{val=SB0}} ->
+                SB1 = statebox:modify({sets, del_element, [Val]}, SB0),
                 SB2 = statebox:expire(?STATEBOX_EXPIRE, SB1),
-                #rts_sbox{val=SB2}
+                #rts_sbox{val=SB2};
+            error ->
+                SB0 = statebox:new(fun sets:new/0),
+                SB1 = statebox:modify({sets, del_element, [Val]}, SB0),
+                #rts_sbox{val=SB1}
         end,
     Stats = dict:store(StatName, SB, Stats0),
     {reply, {ok, ReqID}, State#state{stats=Stats}}.
-
 
 handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, _Sender, State) ->
     Acc = dict:fold(Fun, Acc0, State#state.stats),

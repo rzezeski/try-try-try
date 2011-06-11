@@ -12,7 +12,8 @@
          append/3,
          incr/2,
          incrby/3,
-         sadd/3
+         sadd/3,
+         srem/3
         ]).
 
 -export([get_dbg_preflist/2,
@@ -81,6 +82,9 @@ incrby(Client, StatName, Val) ->
 %% @doc Add a memeber to the stat's set.
 sadd(Client, StatName, Val) ->
     do_write(Client, StatName, sadd, Val).
+
+srem(Client, StatName, Val) ->
+    do_write(Client, StatName, srem, Val).
 
 %% @doc Fake a partitioned write to the given `Nodes' from the given
 %% `Coordinator'.  That is, this write will act as if the given nodes

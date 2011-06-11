@@ -49,9 +49,6 @@ get(Client, StatName, Opts) ->
     wait_for_reqid(ReqID, ?TIMEOUT).
 
 get_dbg_preflist(Client, StatName) ->
-    %% DocIdx = riak_core_util:chash_key({list_to_binary(Client),
-    %%                                    list_to_binary(StatName)}),
-    %% riak_core_apl:get_apl(DocIdx, ?N, rts_stat).
     [get_dbg_preflist(Client, StatName, N) || N <- lists:seq(1,3)].
 
 get_dbg_preflist(Client, StatName, N) ->

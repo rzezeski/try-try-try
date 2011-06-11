@@ -41,11 +41,12 @@ children(Objs) ->
 %%
 %% @doc Predeicate to determine if `ObjA' and `ObjB' are equal.
 -spec equal(ObjA::rts_obj(), ObjB::rts_obj()) -> boolean().
-equal(#rts_vclock{val=V, vclock=C}, #rts_vclock{val=V, vclock=C}) -> true;
-equal(#rts_vclock{}, #rts_vclock{}) -> false;
+equal(#rts_vclock{vclock=A}, #rts_vclock{vclock=B}) -> vclock:equal(A,B);
 
 equal(#rts_basic{val=V}, #rts_basic{val=V}) -> true;
-equal(#rts_basic{}, #rts_basic{}) -> false;
+
+equal(#rts_sbox{val=A}, #rts_sbox{val=B}) ->
+    statebox:value(A) == statebox:value(B);
 
 equal(not_found, not_found) -> true;
 
@@ -87,7 +88,12 @@ merge([#rts_vclock{}|_]=Objs) ->
         Chldrn ->
             {M,F} = proplists:get_value(rec_mf, meta(hd(Chldrn))),
             M:F(Chldrn)
-    end.
+    end;
+
+merge([#rts_sbox{}|_]=Objs) ->
+    SBs = [O#rts_sbox.val || O <- Objs],
+    S = statebox:merge(SBs),
+    #rts_sbox{val=S}.
 
 %% @pure
 %%
@@ -125,6 +131,7 @@ meta(#rts_vclock{meta=Meta}) -> Meta.
 -spec val(rts_obj()) -> any().
 val(#rts_basic{val=Val}) -> Val;
 val(#rts_vclock{val=Val}) -> Val;
+val(#rts_sbox{val=SB}) -> statebox:value(SB);
 val(not_found) -> not_found.
 
 %% @pure

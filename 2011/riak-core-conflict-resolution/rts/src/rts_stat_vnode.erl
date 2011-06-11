@@ -147,10 +147,18 @@ handle_command({append, {ReqID, _}, StatName, Val}, _Sender, #state{stats=Stats0
     {reply, {ok, ReqID}, State#state{stats=Stats}};
 
 handle_command({sadd, {ReqID, _}, StatName, Val}, _Sender, #state{stats=Stats0}=State) ->
-    F = fun(S) ->
-                sets:add_element(Val, S)
+    SB = 
+        case dict:find(StatName, Stats0) of
+            {ok, #rts_sbox{val=SB0}} ->
+                SB1 = statebox:modify({sets, add_element, [Val]}, SB0),
+                #rts_sbox{val=SB1};
+            error ->
+                SB0 = statebox:new(fun sets:new/0),
+                SB1 = statebox:modify({sets, add_element, [Val]}, SB0),
+                SB2 = statebox:expire(?STATEBOX_EXPIRE, SB1),
+                #rts_sbox{val=SB2}
         end,
-    Stats = dict:update(StatName, F, sets:from_list([Val]), Stats0),
+    Stats = dict:store(StatName, SB, Stats0),
     {reply, {ok, ReqID}, State#state{stats=Stats}}.
 
 

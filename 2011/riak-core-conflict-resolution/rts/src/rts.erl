@@ -18,7 +18,7 @@
 
 -export([get_dbg_preflist/2,
          get_dbg_preflist/3,
-         dbg_incr/4]).
+         dbg_op/5, dbg_op/6]).
 -define(TIMEOUT, 5000).
 
 %%%===================================================================
@@ -79,27 +79,38 @@ incr(Client, StatName) ->
 incrby(Client, StatName, Val) ->
     do_write(Client, StatName, incrby, Val).
 
-%% @doc Add a memeber to the stat's set.
+%% @doc Add a member to the stat's set.
 sadd(Client, StatName, Val) ->
     do_write(Client, StatName, sadd, Val).
 
+%% @doc Remove a member from the stat's set.
 srem(Client, StatName, Val) ->
     do_write(Client, StatName, srem, Val).
 
-%% @doc Fake a partitioned write to the given `Nodes' from the given
-%% `Coordinator'.  That is, this write will act as if the given nodes
-%% are partitioned from the rest of the cluster.  Let the replies fall
-%% on the caller's mailbox.
-dbg_incr(Coordinator, Nodes, Client, StatName) ->
+%% @doc Fake a partitioned `Op' to the given `Nodes' from the given
+%% `Coordinator'.  That is, this op will act as if the given nodes are
+%% partitioned from the rest of the cluster.  Let the replies fall on
+%% the caller's mailbox.
+-spec dbg_op(atom(), node(), [node()], string(), string()) -> ok.
+dbg_op(Op, Coordinator, Nodes, Client, StatName) ->
+    dbg_op(Op, Coordinator, Nodes, Client, StatName, undefined).
+
+-spec dbg_op(atom(), node(), [node()], string(), string(), term()) -> ok.
+dbg_op(Op, Coordinator, Nodes, Client, StatName, Val) ->
     ReqID = mk_reqid(),
     DocIdx = riak_core_util:chash_key({list_to_binary(Client),
                                        list_to_binary(StatName)}),
     Preflist = riak_core_apl:get_apl(DocIdx, ?N, rts_stat),
     P = fun({_Idx,Node}) ->
-                lists:member(Node, Nodes)
+                lists:member(Node, [Coordinator|Nodes])
         end,
     Targets = lists:filter(P, Preflist),
-    rts_stat_vnode:incr(Targets, {ReqID, Coordinator}, StatName).
+    case Val of
+        undefined ->
+            rts_stat_vnode:Op(Targets, {ReqID, Coordinator}, StatName);
+        _ ->
+            rts_stat_vnode:Op(Targets, {ReqID, Coordinator}, StatName, Val)
+    end.
 
 %%%===================================================================
 %%% Internal Functions

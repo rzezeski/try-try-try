@@ -108,7 +108,6 @@ wait_for_n({ok, _ReqID, IdxNode, Obj},
 wait_for_n(timeout, SD) ->
     {stop, timeout, SD}.
 
-%% TODO Looks like I'm merging twice
 finalize(timeout, SD=#state{replies=Replies, stat_name=StatName}) ->
     MObj = merge(Replies),
     case needs_repair(MObj, Replies) of

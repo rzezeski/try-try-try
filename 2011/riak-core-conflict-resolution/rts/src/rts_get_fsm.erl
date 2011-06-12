@@ -15,7 +15,7 @@
 %% States
 -export([prepare/2, execute/2, waiting/2, wait_for_n/2, finalize/2]).
 
--export([incr_reconcile/1, incrby_reconcile/1]).
+-export([reconcile/1]).
 
 -record(state, {req_id,
                 from,
@@ -148,28 +148,19 @@ merge(Replies) ->
     Objs = [Obj || {_,Obj} <- Replies],
     rts_obj:merge(Objs).
 
-default(Node, VClock) ->
-    case vclock:get_counter(Node, VClock) of
-        undefined -> 0;
-        Val -> Val
-    end.
-
 %% @pure
 %%
-%% @doc Reconcile conflicts between `incrby' values.
-incrby_reconcile([Obj|_]) -> Obj.
-
-%% @pure
-%%
-%% @doc Reconcile conflicts between `incr' values.
--spec incr_reconcile([rts_obj()]) -> rts_obj() | not_found.
-incr_reconcile(Siblings) ->
-    VCs = [rts_obj:vclock(O) || O <- Siblings],
-    Nodes = unique(lists:flatten([vclock:all_nodes(VC) || VC <- VCs])),
-    Val = lists:sum([lists:max([default(Node, VC) || VC <- VCs])
-                     || Node <- Nodes]),
-    MergedVC = vclock:merge(VCs),
-    #rts_vclock{val=Val, vclock=MergedVC}.
+%% @doc Reconcile conflicts among conflicting values.
+-spec reconcile([A::any()]) -> A::any().
+reconcile([#incr{}|_]=Vals) ->
+    Get = fun(K, L) -> proplists:get_value(K, L, 0) end,
+    Counts = [dict:to_list(V#incr.counts) || V <- Vals],
+    Nodes = unique(lists:flatten([[Node || {Node,_} <- C] || C <- Counts])),
+    MaxCounts = [{Node, lists:max([Get(Node, C) || C <- Counts])}
+                 || Node <- Nodes],
+    Total = lists:sum([lists:max([Get(Node, C) || C <- Counts])
+                       || Node <- Nodes]),
+    #incr{total=Total, counts=MaxCounts}.
 
 %% @pure
 %%

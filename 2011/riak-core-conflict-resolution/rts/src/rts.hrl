@@ -18,6 +18,9 @@
                          vclock :: vclock:vclock()}).
 -record(rts_sbox,        {val   :: statebox:statevox()}).
 
+-record(incr,           {total  :: pos_integer(),
+                         counts :: dict()}).
+
 -type rts_basic()       :: #rts_basic{}.
 -type rts_vclock()      :: #rts_vclock{}.
 -type rts_sbox()        :: #rts_sbox{}.

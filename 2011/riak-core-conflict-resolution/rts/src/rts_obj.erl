@@ -86,8 +86,9 @@ merge([#rts_vclock{}|_]=Objs) ->
         [] -> not_found;
         [Child] -> Child;
         Chldrn ->
-            {M,F} = proplists:get_value(rec_mf, meta(hd(Chldrn))),
-            M:F(Chldrn)
+            Val = rts_get_fsm:reconcile(lists:map(fun val/1, Chldrn)),
+            MergedVC = vclock:merge(lists:map(fun vclock/1, Chldrn)),
+            #rts_vclock{val=Val, vclock=MergedVC}
     end;
 
 merge([#rts_sbox{}|_]=Objs) ->

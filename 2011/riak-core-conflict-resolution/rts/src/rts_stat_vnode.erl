@@ -119,32 +119,42 @@ handle_command({repair, undefined, StatName, Obj}, _Sender, #state{stats=Stats0}
     Stats = dict:store(StatName, Obj, Stats0),
     {noreply, State#state{stats=Stats}};
 
-handle_command({incr, {ReqID, Cordinator}, StatName}, _Sender,
+handle_command({incr, {ReqID, Coordinator}, StatName}, _Sender,
                #state{stats=Stats0}=State) ->
     Obj =
         case dict:find(StatName, Stats0) of
-            {ok, #rts_vclock{val=Val0, vclock=VClock0}=Obj0} ->
-                Val = Val0 + 1,
-                VClock = vclock:increment(Cordinator, VClock0),
+            {ok, #rts_vclock{val=#incr{total=T0, counts=C0},
+                             vclock=VClock0}=Obj0} ->
+                T = T0 + 1,
+                C = dict:update_counter(Coordinator, 1, C0),
+                Val = #incr{total=T, counts=C},
+                VClock = vclock:increment(Coordinator, VClock0),
                 Obj0#rts_vclock{val=Val, vclock=VClock};
             error ->
-                Meta = [{rec_mf, rts_get_fsm, incr_reconcile}],
+                Val = #incr{total=1, counts=dict:from_list([{Coordinator, 1}])},
                 VC0 = vclock:fresh(),
-                VC = vclock:increment(Cordinator, VC0),
-                #rts_vclock{meta=Meta, val=1, vclock=VC}
+                VC = vclock:increment(Coordinator, VC0),
+                #rts_vclock{val=Val, vclock=VC}
         end,
     Stats = dict:store(StatName, Obj, Stats0),
     {reply, {ok, ReqID}, State#state{stats=Stats}};
 
-handle_command({incrby, {ReqID, _}, StatName, IncrBy}, _Sender, #state{stats=Stats0}=State) ->
+handle_command({incrby, {ReqID, Coordinator}, StatName, IncrBy}, _Sender, #state{stats=Stats0}=State) ->
     Obj =
         case dict:find(StatName, Stats0) of
-            {ok, #rts_basic{val=Val0}=Obj0} ->
-                Val = Val0 + IncrBy,
-                Obj0#rts_basic{val=Val};
+            {ok, #rts_vclock{val=#incr{total=T0, counts=C0},
+                             vclock=VClock0}=Obj0} ->
+                T = T0 + IncrBy,
+                C = dict:update_counter(Coordinator, IncrBy, C0),
+                Val = #incr{total=T, counts=C},
+                VClock = vclock:increment(Coordinator, VClock0),
+                Obj0#rts_vclock{val=Val, vclock=VClock};
             error ->
-                Meta = [{rec_mf, rts_get_fsm, incrby_reconcile}],
-                #rts_basic{meta=Meta, val=IncrBy}
+                Val = #incr{total=IncrBy,
+                            counts=dict:from_list([{Coordinator, IncrBy}])},
+                VC0 = vclock:fresh(),
+                VC = vclock:increment(Coordinator, VC0),
+                #rts_vclock{val=Val, vclock=VC}
         end,
     Stats = dict:store(StatName, Obj, Stats0),
     {reply, {ok, ReqID}, State#state{stats=Stats}};

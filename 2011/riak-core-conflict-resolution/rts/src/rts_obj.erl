@@ -6,7 +6,7 @@
 -module(rts_obj).
 -export([ancestors/1, children/1, equal/1, equal/2, merge/1, unique/1,
          update/3]).
--export([meta/1, val/1, vclock/1]).
+-export([val/1, vclock/1]).
 
 -include("rts.hrl").
 
@@ -42,14 +42,7 @@ children(Objs) ->
 %% @doc Predeicate to determine if `ObjA' and `ObjB' are equal.
 -spec equal(ObjA::rts_obj(), ObjB::rts_obj()) -> boolean().
 equal(#rts_vclock{vclock=A}, #rts_vclock{vclock=B}) -> vclock:equal(A,B);
-
-equal(#rts_basic{val=V}, #rts_basic{val=V}) -> true;
-
-equal(#rts_sbox{val=A}, #rts_sbox{val=B}) ->
-    statebox:value(A) == statebox:value(B);
-
 equal(not_found, not_found) -> true;
-
 equal(_, _) -> false.
 
 %% @pure
@@ -72,15 +65,6 @@ merge([not_found|_]=Objs) ->
         false -> merge(lists:dropwhile(P, Objs))
     end;
 
-merge([#rts_basic{}|_]=Objs) ->
-    case unique(Objs) of
-        [] -> not_found;
-        [Obj] -> Obj;
-        Mult -> 
-            {M,F} = proplists:get_value(rec_mf, meta(hd(Mult))),
-            M:F(Mult)
-    end;
-
 merge([#rts_vclock{}|_]=Objs) ->
     case rts_obj:children(Objs) of
         [] -> not_found;
@@ -90,11 +74,6 @@ merge([#rts_vclock{}|_]=Objs) ->
             MergedVC = vclock:merge(lists:map(fun vclock/1, Chldrn)),
             #rts_vclock{val=Val, vclock=MergedVC}
     end.
-
-%% merge([#rts_sbox{}|_]=Objs) ->
-%%     SBs = [O#rts_sbox.val || O <- Objs],
-%%     S = statebox:merge(SBs),
-%%     #rts_sbox{val=S}.
 
 %% @pure
 %%
@@ -118,21 +97,12 @@ unique(Objs) ->
 %%
 %% TODO Do I want to limit `Updater' to `node()'?
 -spec update(val(), node(), rts_obj()) -> rts_obj().
-update(Val, _Updater, #rts_basic{}=Obj0) ->
-    Obj0#rts_basic{val=Val};
-
 update(Val, Updater, #rts_vclock{vclock=VClock0}=Obj0) ->
     VClock = vclock:increment(Updater, VClock0),
     Obj0#rts_vclock{val=Val, vclock=VClock}.
 
--spec meta(rts_obj()) -> meta().
-meta(#rts_basic{meta=Meta}) -> Meta;
-meta(#rts_vclock{meta=Meta}) -> Meta.
-
 -spec val(rts_obj()) -> any().
-val(#rts_basic{val=Val}) -> Val;
 val(#rts_vclock{val=Val}) -> Val;
-val(#rts_sbox{val=SB}) -> statebox:value(SB);
 val(not_found) -> not_found.
 
 %% @pure

@@ -9,20 +9,13 @@
 
 -type val()             :: any().
 -type proplist()        :: [proplists:property()].
--type meta()            :: proplist().
 
--record(rts_basic,      {meta   :: proplist(),
-                         val    :: val()}).
--record(rts_vclock,     {meta   :: proplist(),
-                         val    :: val(),
+-record(rts_vclock,     {val    :: val(),
                          vclock :: vclock:vclock()}).
--record(rts_sbox,        {val   :: statebox:statevox()}).
 
 -record(incr,           {total  :: pos_integer(),
                          counts :: dict()}).
 
--type rts_basic()       :: #rts_basic{}.
 -type rts_vclock()      :: #rts_vclock{}.
--type rts_sbox()        :: #rts_sbox{}.
--type rts_obj()         :: rts_basic() | rts_vclock() | not_found.
+-type rts_obj()         :: rts_vclock() | not_found.
 -type reconcile_fun()   :: fun(([rts_obj()]) -> rts_obj()).

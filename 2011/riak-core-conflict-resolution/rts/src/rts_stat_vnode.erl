@@ -64,7 +64,7 @@ repair(IdxNode, StatName, Obj) ->
 %% TODO: I have to look at the Sender stuff more closely again
 incr(Preflist, Identity, StatName) ->
     riak_core_vnode_master:command(Preflist,
-                                   {incr, Identity, StatName},
+                                   {incrby, Identity, StatName, 1},
                                    {fsm, undefined, self()},
                                    ?MASTER).
 
@@ -118,26 +118,6 @@ handle_command({repair, undefined, StatName, Obj}, _Sender, #state{stats=Stats0}
     error_logger:error_msg("repair performed ~p~n", [Obj]),
     Stats = dict:store(StatName, Obj, Stats0),
     {noreply, State#state{stats=Stats}};
-
-handle_command({incr, {ReqID, Coordinator}, StatName}, _Sender,
-               #state{stats=Stats0}=State) ->
-    Obj =
-        case dict:find(StatName, Stats0) of
-            {ok, #rts_vclock{val=#incr{total=T0, counts=C0},
-                             vclock=VClock0}=Obj0} ->
-                T = T0 + 1,
-                C = dict:update_counter(Coordinator, 1, C0),
-                Val = #incr{total=T, counts=C},
-                VClock = vclock:increment(Coordinator, VClock0),
-                Obj0#rts_vclock{val=Val, vclock=VClock};
-            error ->
-                Val = #incr{total=1, counts=dict:from_list([{Coordinator, 1}])},
-                VC0 = vclock:fresh(),
-                VC = vclock:increment(Coordinator, VC0),
-                #rts_vclock{val=Val, vclock=VC}
-        end,
-    Stats = dict:store(StatName, Obj, Stats0),
-    {reply, {ok, ReqID}, State#state{stats=Stats}};
 
 handle_command({incrby, {ReqID, Coordinator}, StatName, IncrBy}, _Sender, #state{stats=Stats0}=State) ->
     Obj =

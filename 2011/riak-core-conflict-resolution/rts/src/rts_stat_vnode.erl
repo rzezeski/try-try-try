@@ -189,8 +189,13 @@ handoff_finished(_TargetNode, State) ->
     {ok, State}.
 
 handle_handoff_data(Data, #state{stats=Stats0}=State) ->
-    {StatName, Val} = binary_to_term(Data),
-    Stats = dict:store(StatName, Val, Stats0),
+    {StatName, HObj} = binary_to_term(Data),
+    MObj =
+        case dict:find(StatName, Stats0) of
+            {ok, Obj} -> rts_obj:merge([Obj,HObj]);
+            error -> HObj
+        end,
+    Stats = dict:store(StatName, MObj, Stats0),
     {reply, ok, State#state{stats=Stats}}.
 
 encode_handoff_item(StatName, Val) ->

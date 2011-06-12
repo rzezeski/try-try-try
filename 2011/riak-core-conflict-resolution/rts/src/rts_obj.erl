@@ -89,12 +89,12 @@ merge([#rts_vclock{}|_]=Objs) ->
             Val = rts_get_fsm:reconcile(lists:map(fun val/1, Chldrn)),
             MergedVC = vclock:merge(lists:map(fun vclock/1, Chldrn)),
             #rts_vclock{val=Val, vclock=MergedVC}
-    end;
+    end.
 
-merge([#rts_sbox{}|_]=Objs) ->
-    SBs = [O#rts_sbox.val || O <- Objs],
-    S = statebox:merge(SBs),
-    #rts_sbox{val=S}.
+%% merge([#rts_sbox{}|_]=Objs) ->
+%%     SBs = [O#rts_sbox.val || O <- Objs],
+%%     S = statebox:merge(SBs),
+%%     #rts_sbox{val=S}.
 
 %% @pure
 %%

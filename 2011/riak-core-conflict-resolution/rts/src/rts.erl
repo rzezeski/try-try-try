@@ -134,8 +134,7 @@ wait_for_reqid(ReqID, Timeout) ->
 mk_reqid() -> erlang:phash2(erlang:now()).
 
 pretty_print(#incr{total=Total}) -> Total;
-pretty_print(Val) ->
-    case sets:is_set(Val) of
-        true -> sets:to_list(Val);
-        false -> Val
-    end.
+pretty_print(Val) when element(1, Val) == statebox ->
+    pretty_print(statebox:value(Val));
+pretty_print(Val) when element(1, Val) == set -> sets:to_list(Val);
+pretty_print(Val) -> Val.

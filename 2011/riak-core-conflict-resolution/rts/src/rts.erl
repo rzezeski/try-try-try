@@ -42,12 +42,12 @@ entry(Client, Entry) ->
 
 %% @doc Get a stat's value.
 get(Client, StatName) ->
-    {ok, ReqID} = rts_get_fsm:get(Client, StatName, []),
-    wait_for_reqid(ReqID, ?TIMEOUT).
+    get(Client, StatName, []).
 
 get(Client, StatName, Opts) ->
     {ok, ReqID} = rts_get_fsm:get(Client, StatName, Opts),
-    wait_for_reqid(ReqID, ?TIMEOUT).
+    {ok, Val} = wait_for_reqid(ReqID, ?TIMEOUT),
+    pretty_print(Val).
 
 get_dbg_preflist(Client, StatName) ->
     [get_dbg_preflist(Client, StatName, N) || N <- lists:seq(1,3)].
@@ -132,3 +132,10 @@ wait_for_reqid(ReqID, Timeout) ->
     end.
 
 mk_reqid() -> erlang:phash2(erlang:now()).
+
+pretty_print(#incr{total=Total}) -> Total;
+pretty_print(Val) ->
+    case sets:is_set(Val) of
+        true -> sets:to_list(Val);
+        false -> Val
+    end.

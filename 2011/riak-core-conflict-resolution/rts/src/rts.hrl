@@ -10,12 +10,11 @@
 -type val()             :: any().
 -type proplist()        :: [proplists:property()].
 
--record(rts_vclock,     {val    :: val(),
+-record(rts_obj,        {val    :: val(),
                          vclock :: vclock:vclock()}).
 
 -record(incr,           {total  :: pos_integer(),
                          counts :: dict()}).
 
--type rts_vclock()      :: #rts_vclock{}.
--type rts_obj()         :: rts_vclock() | not_found.
+-type rts_obj()         :: #rts_obj{} | not_found.
 -type reconcile_fun()   :: fun(([rts_obj()]) -> rts_obj()).

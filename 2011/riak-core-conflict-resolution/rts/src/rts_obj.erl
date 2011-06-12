@@ -19,8 +19,8 @@
 ancestors(Objs0) ->
     Objs = [O || O <- Objs0, O /= not_found],
     As = [[O2 || O2 <- Objs,
-                 ancestor(O2#rts_vclock.vclock,
-                          O1#rts_vclock.vclock)] || O1 <- Objs],
+                 ancestor(O2#rts_obj.vclock,
+                          O1#rts_obj.vclock)] || O1 <- Objs],
     unique(lists:flatten(As)).
 
 %% @pure
@@ -41,7 +41,7 @@ children(Objs) ->
 %%
 %% @doc Predeicate to determine if `ObjA' and `ObjB' are equal.
 -spec equal(ObjA::rts_obj(), ObjB::rts_obj()) -> boolean().
-equal(#rts_vclock{vclock=A}, #rts_vclock{vclock=B}) -> vclock:equal(A,B);
+equal(#rts_obj{vclock=A}, #rts_obj{vclock=B}) -> vclock:equal(A,B);
 equal(not_found, not_found) -> true;
 equal(_, _) -> false.
 
@@ -65,14 +65,14 @@ merge([not_found|_]=Objs) ->
         false -> merge(lists:dropwhile(P, Objs))
     end;
 
-merge([#rts_vclock{}|_]=Objs) ->
+merge([#rts_obj{}|_]=Objs) ->
     case rts_obj:children(Objs) of
         [] -> not_found;
         [Child] -> Child;
         Chldrn ->
             Val = rts_get_fsm:reconcile(lists:map(fun val/1, Chldrn)),
             MergedVC = vclock:merge(lists:map(fun vclock/1, Chldrn)),
-            #rts_vclock{val=Val, vclock=MergedVC}
+            #rts_obj{val=Val, vclock=MergedVC}
     end.
 
 %% @pure
@@ -97,16 +97,16 @@ unique(Objs) ->
 %%
 %% TODO Do I want to limit `Updater' to `node()'?
 -spec update(val(), node(), rts_obj()) -> rts_obj().
-update(Val, Updater, #rts_vclock{vclock=VClock0}=Obj0) ->
+update(Val, Updater, #rts_obj{vclock=VClock0}=Obj0) ->
     VClock = vclock:increment(Updater, VClock0),
-    Obj0#rts_vclock{val=Val, vclock=VClock}.
+    Obj0#rts_obj{val=Val, vclock=VClock}.
 
 -spec val(rts_obj()) -> any().
-val(#rts_vclock{val=Val}) -> Val;
+val(#rts_obj{val=Val}) -> Val;
 val(not_found) -> not_found.
 
 %% @pure
 %%
 %% @doc Given a vclock type `Obj' retrieve the vclock.
--spec vclock(rts_vclock()) -> vclock:vclock().
-vclock(#rts_vclock{vclock=VC}) -> VC.
+-spec vclock(rts_obj()) -> vclock:vclock().
+vclock(#rts_obj{vclock=VC}) -> VC.

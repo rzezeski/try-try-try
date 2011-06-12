@@ -122,19 +122,19 @@ handle_command({repair, undefined, StatName, Obj}, _Sender, #state{stats=Stats0}
 handle_command({incrby, {ReqID, Coordinator}, StatName, IncrBy}, _Sender, #state{stats=Stats0}=State) ->
     Obj =
         case dict:find(StatName, Stats0) of
-            {ok, #rts_vclock{val=#incr{total=T0, counts=C0},
-                             vclock=VClock0}=Obj0} ->
+            {ok, #rts_obj{val=#incr{total=T0, counts=C0},
+                          vclock=VClock0}=Obj0} ->
                 T = T0 + IncrBy,
                 C = dict:update_counter(Coordinator, IncrBy, C0),
                 Val = #incr{total=T, counts=C},
                 VClock = vclock:increment(Coordinator, VClock0),
-                Obj0#rts_vclock{val=Val, vclock=VClock};
+                Obj0#rts_obj{val=Val, vclock=VClock};
             error ->
                 Val = #incr{total=IncrBy,
                             counts=dict:from_list([{Coordinator, IncrBy}])},
                 VC0 = vclock:fresh(),
                 VC = vclock:increment(Coordinator, VC0),
-                #rts_vclock{val=Val, vclock=VC}
+                #rts_obj{val=Val, vclock=VC}
         end,
     Stats = dict:store(StatName, Obj, Stats0),
     {reply, {ok, ReqID}, State#state{stats=Stats}};
@@ -149,17 +149,17 @@ handle_command({sadd, {ReqID, Coordinator}, StatName, Val},
                _Sender, #state{stats=Stats0}=State) ->
     SB = 
         case dict:find(StatName, Stats0) of
-            {ok, #rts_vclock{val=SB0, vclock=VC0}} ->
+            {ok, #rts_obj{val=SB0, vclock=VC0}} ->
                 SB1 = statebox:modify({sets, add_element, [Val]}, SB0),
                 SB2 = statebox:expire(?STATEBOX_EXPIRE, SB1),
                 VC = vclock:increment(Coordinator, VC0),
-                #rts_vclock{val=SB2, vclock=VC};
+                #rts_obj{val=SB2, vclock=VC};
             error ->
                 SB0 = statebox:new(fun sets:new/0),
                 SB1 = statebox:modify({sets, add_element, [Val]}, SB0),
                 VC0 = vclock:fresh(),
                 VC = vclock:increment(Coordinator, VC0),
-                #rts_vclock{val=SB1, vclock=VC}
+                #rts_obj{val=SB1, vclock=VC}
         end,
     Stats = dict:store(StatName, SB, Stats0),
     {reply, {ok, ReqID}, State#state{stats=Stats}};
@@ -168,17 +168,17 @@ handle_command({srem, {ReqID, Coordinator}, StatName, Val},
                _Sender, #state{stats=Stats0}=State) ->
     SB =
         case dict:find(StatName, Stats0) of
-            {ok, #rts_vclock{val=SB0, vclock=VC0}} ->
+            {ok, #rts_obj{val=SB0, vclock=VC0}} ->
                 SB1 = statebox:modify({sets, del_element, [Val]}, SB0),
                 SB2 = statebox:expire(?STATEBOX_EXPIRE, SB1),
                 VC = vclock:increment(Coordinator, VC0),
-                #rts_vclock{val=SB2, vclock=VC};
+                #rts_obj{val=SB2, vclock=VC};
             error ->
                 SB0 = statebox:new(fun sets:new/0),
                 SB1 = statebox:modify({sets, del_element, [Val]}, SB0),
                 VC0 = vclock:fresh(),
                 VC = vclock:increment(Coordinator, VC0),
-                #rts_vclock{val=SB1, vclock=VC}
+                #rts_obj{val=SB1, vclock=VC}
         end,
     Stats = dict:store(StatName, SB, Stats0),
     {reply, {ok, ReqID}, State#state{stats=Stats}}.

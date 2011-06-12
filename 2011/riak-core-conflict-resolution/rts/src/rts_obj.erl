@@ -93,9 +93,7 @@ unique(Objs) ->
 %% @pure
 %%
 %% @doc Given a `Val' update the `Obj'.  The `Updater' is the name of
-%% the entity performing the update.x
-%%
-%% TODO Do I want to limit `Updater' to `node()'?
+%% the entity performing the update.
 -spec update(val(), node(), rts_obj()) -> rts_obj().
 update(Val, Updater, #rts_obj{vclock=VClock0}=Obj0) ->
     VClock = vclock:increment(Updater, VClock0),

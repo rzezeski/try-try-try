@@ -159,7 +159,7 @@ reconcile([#incr{}|_]=Vals) ->
                  || Node <- Nodes],
     Total = lists:sum([lists:max([Get(Node, C) || C <- Counts])
                        || Node <- Nodes]),
-    #incr{total=Total, counts=MaxCounts};
+    #incr{total=Total, counts=dict:from_list(MaxCounts)};
 
 reconcile([V|_]=Vals) when element(1, V) == statebox -> statebox:merge(Vals).
 

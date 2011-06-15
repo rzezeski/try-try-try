@@ -138,3 +138,131 @@ There are already posts about why vclocks are [easy](http://blog.basho.com/2010/
 </table>
 
 In the case above the object versions on `A` and `B` are missing `100` bytes that were added on `C` during the split.  If you look at the vector clocks you can see that `A` and `B` are identical but different from `C` which has one more operation logged under the `C` coordinator.  This indicates that these versions are conflicting and must be resolved.  What vector clocks don't do, however, are actually resolve the conflicts.
+
+
+Reconciling Conflicts
+----------
+
+In order to reconcile conflicts in your system you have to know about the type of data you are storing in your system.  For example, in Riak the data is an opaque blob which means Riak can't really do much on it's own to resolve a conflict because it doesn't understand anything about the data it is storing.  By default Riak will implement a _Last Write Wins_ (LWW) behavior which will select the latest object version based on wall clock time.  If this is unacceptable then the user has the option to turning this feature off by setting `allow_mult` to true which will allow multiple versions to coexist and upon a read all versions will be returned to the caller who can then reconcile these versions in their appropriate context.
+
+However, it's not always just enough to have the differing object versions to reconcile an object.  Many times you will need supplementary data that puts those versions in context.  Returning to the example above, on that final two versions of the object would be returned with two values: `1600` and `1200`.  Now, I hope it's clear to everyone that you can't just add these two numbers to get the reconciled version, because that would be too large a number.  Likewise, you can't just pick the largest number because that would be too small a number.  In order to determine the correct number more context is needed than just the values.  One way to do this (but not the only way, there was a very recent addition to statebox to do the same thing) is by a separate count for each coordinator.  In that case the total is always the sum of the max of all coordinators.  I think this is more clearly demonstrate by returning to the example above but instead using the `incr` operation as an example which is really just a specific instance of `incrby`.
+
+<table>
+  <tr>
+    <th>Node A</th>
+    <th>Node B</th>
+    <th>Node C</th>
+  </tr>
+
+  <tr>
+    <td align="center" colspan="3">incr on Coordinator A</td>
+  </tr>
+
+  <tr>
+    <td>1 [{A,1}]</td>
+    <td>1 [{A,1}]</td>
+    <td>1 [{A,1}]</td>
+  </tr>
+
+  <tr>
+    <td align="center" colspan="3">incr Coordinator A</td>
+  </tr>
+
+  <tr>
+    <td>2 [{A,2}]</td>
+    <td>2 [{A,2}]</td>
+    <td>2 [{A,2}]</td>
+  </tr>
+
+  <tr>
+    <td align="center" colspan="3">incr on Coordinator C</td>
+  </tr>
+
+  <tr>
+    <td>3 [{A,2}, {C,1}]</td>
+    <td>3 [{A,2}, {C,1}]</td>
+    <td>3 [{A,2}, {C,1}]</td>
+  </tr>
+
+  <tr>
+    <td align="center" colspan="3">Network Split -- (A,B), (C) </td>
+  </tr>
+
+  <tr>
+    <td align="center" colspan="3">incr on Coordinator C</td>
+  </tr>
+
+  <tr>
+    <td>3 [{A,2}, {C,1}]</td>
+    <td>3 [{A,2}, {C,1}]</td>
+    <td>4 [{A,2}, {C,2}]</td>
+  </tr>
+
+  <tr>
+    <td align="center" colspan="3">incr on Coordinator B</td>
+  </tr>
+
+  <tr>
+    <td>4 [{A,2}, {B,1}, {C,1}]</td>
+    <td>4 [{A,2}, {B,1}, {C,1}]</td>
+    <td>4 [{A,2},        {C,2}]</td>
+  </tr>
+
+  <tr>
+    <td align="center" colspan="3">Network Repaired -- (A,B,C)</td>
+  </tr>
+
+  <tr>
+    <td align="center" colspan="3">incr on Coordinator A</td>
+  </tr>
+
+  <tr>
+    <td>5 [{A,3}, {B,1}, {C,1}]</td>
+    <td>5 [{A,3}, {B,1}, {C,1}]</td>
+    <td>5 [{A,3},        {C,2}]</td>
+  </tr>
+
+  <tr>
+    <td align="center" colspan="3">GET total_sent on Coordinator A</td>
+  </tr>
+</table>
+
+The keen reader will notice that the context data is isomorphic to a vector clock so I just use the same structure to represent both.  In fact, an earlier iteration of the code used the vector clock directly to resolve conflicts until I realized this was probably poor form so I added an explicit context structure.  What should the resolved value be?  Counting all occurrences of `incr` in the table above would rightly get you the value `6`, but my proposed context doesn't store every incr op performed, or does it?  Notice that the context stores the total number of operations performed by each coordinator and we know each of these is an `incr` operation.  By summing the max count for each coordinator we get the correct result.
+
+    Reconciled Object = {A,3} + {B,1} + {C,2} => 6 [{A,3}, {B,1}, {C,2}]
+
+Another way to reason about this is that during the split both the `AB` and `C` cluster missed a count.  Since both have seen `5` counts up to the read adding `1` to either side will arrive at `6`.  Alright, this is supposed to be a **working** blog post so how about some code?
+
+The excerpt below comes from [rts_stat_vnode](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-conflict-resolution/rts/src/rts_stat_vnode.erl) and is responsible for not only incrementing the value (as it did before) but now must also keep tract of the context which is stored under the `#incr` record's element `counts`.  The `counts` element contains a dict that maps `Coordinator` nodes to their respective total count.  Notice that the `Coordinator` value is passed down from the coordinator itself (remember from the last post it is the coordinator that interacts with the vnodes).  This is important because the vnode, by nature, is probably running on a different node from the coordinator and you only want to bump the count of the node you saw the operation come in on.
+
+    handle_command({incrby, {ReqID, Coordinator}, StatName, IncrBy}, _Sender, #state{stats=Stats0}=State) ->
+        Obj =
+            case dict:find(StatName, Stats0) of
+                {ok, #rts_obj{val=#incr{total=T0, counts=C0}}=O} ->
+                    T = T0 + IncrBy,
+                    C = dict:update_counter(Coordinator, IncrBy, C0),
+                    Val = #incr{total=T, counts=C},
+                    rts_obj:update(Val, Coordinator, O);
+                error ->
+                    Val = #incr{total=IncrBy,
+                                counts=dict:from_list([{Coordinator, IncrBy}])},
+                    VC0 = vclock:fresh(),
+                    VC = vclock:increment(Coordinator, VC0),
+                    #rts_obj{val=Val, vclock=VC}
+            end,
+        Stats = dict:store(StatName, Obj, Stats0),
+        {reply, {ok, ReqID}, State#state{stats=Stats}};
+
+
+The next excerpt is responsible for reconciling divergent versions of `#incr` values.  I feel like I could probably clean this up but the main thing to take away is that it uses the context data to determine the max count for each coordinator and then sums them up to arrive at the resolved total.  Make sure to notice that it returns a new `#incr` value that has both the new `Total` **and** the max count from each coordinator.
+
+    -spec reconcile([A::any()]) -> A::any().
+    reconcile([#incr{}|_]=Vals) ->
+        Get = fun(K, L) -> proplists:get_value(K, L, 0) end,
+        Counts = [dict:to_list(V#incr.counts) || V <- Vals],
+        Nodes = unique(lists:flatten([[Node || {Node,_} <- C] || C <- Counts])),
+        MaxCounts = [{Node, lists:max([Get(Node, C) || C <- Counts])}
+                     || Node <- Nodes],
+        Total = lists:sum([lists:max([Get(Node, C) || C <- Counts])
+                           || Node <- Nodes]),
+        #incr{total=Total, counts=dict:from_list(MaxCounts)};

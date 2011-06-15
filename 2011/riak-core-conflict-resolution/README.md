@@ -266,3 +266,102 @@ The next excerpt is responsible for reconciling divergent versions of `#incr` va
         Total = lists:sum([lists:max([Get(Node, C) || C <- Counts])
                            || Node <- Nodes]),
         #incr{total=Total, counts=dict:from_list(MaxCounts)};
+
+
+That's all well and good for reconciling counters, but what about other types of data?
+
+
+Reconciling Conflicts With Statebox
+----------
+
+In RTS, along with counters, there are also sets.  Currently sets are only used to keep track of the various user agents that have hit your webserver.  In this case that means RTS is only ever adding data to the set and reconciliation can be as simple as a union.  However, the second you allow even on delete operation to occur things get murky.  Once again I'll use an example to demonstrate why.
+
+Lets say I add a stat to RTS that tracks user login/logout events and keep track of all currently logged-in users via a set.
+
+<table>
+  <tr>
+    <th>Node A</th>
+    <th>Node B</th>
+  </tr>
+
+  <tr>
+    <td align="center" colspan="3">user_login rzezeski on coordinator A</td>
+  </tr>
+
+  <tr>
+    <td>{rzezeski}</td>
+    <td>{rzezeski}</td>
+  </tr>
+
+  <tr>
+    <td align="center" colspan="3">user_login whilton on coordinator B</td>
+  </tr>
+
+  <tr>
+    <td>{rzezeski, whilton}</td>
+    <td>{rzezeski, whilton}</td>
+  </tr>
+
+  <tr>
+    <td align="center" colspan="3">Network Split -- (A) (B)</td>
+  </tr>
+
+  <tr>
+    <td align="center" colspan="3">user_logout rzezeski on coordinator A</td>
+  </tr>
+
+  <tr>
+    <td>{whilton}</td>
+    <td>{rzezeski, whilton}</td>
+  </tr>
+
+  <tr>
+    <td align="center" colspan="3">user_logout whilton on coordinator B</td>
+  </tr>
+
+  <tr>
+    <td>{whilton}</td>
+    <td>{rzezeski}</td>
+  </tr>
+
+  <tr>
+    <td align="center" colspan="3">Partition Heal -- (A,B)</td>
+  </tr>
+
+  <tr>
+    <td align="center" colspan="3">GET online_users</td>
+  </tr>
+</table>
+
+After the partition heals if RTS were to simply union the sets then it would appear as if both `rzezeski` and `whilton` are still online when in fact they are both offline.  Zoinks!  As with counters, we need context to resolve this correctly.  More specifically, we need to know the operations that occurred during the network split so that we may replay them after it has been healed.  This is exactly what [statebox](https://github.com/mochi/statebox) provides you with.
+
+Essentially, statebox provides you with a **window** of events that lead up to the current value.  I emphasize window because it's limited in scope.  You can't remember every event because then it becomes too expensive both in the space to store it and the time to traverse it (replay events).  Plus, if your cluster is well connected most of the time there is no reason to remember older events that have since been propagated throughout.  The tricky part is when a partition occurs.  While statebox saves you a lot of trouble it isn't fool proof.  The key is that your statebox window must be larger than the partition window (it terms of time and number of operations) or else you **will** lose events and thus lose data.  Whether that's acceptable depends entirely on your specific application and it's data requirements.
+
+Returning to the example, statebox would determine that even though the union of the two sets is indeed `{rzezeski, whilton}` that two deletes have occurred, one for each user, and that the correct value is actually an empty set, `{}`.  Statebox does this by selecting one of the values and then applying the union of all **operations** that have occurred.  This means statebox is limited in the type of values in can deal with.  Please see this [post](http://labs.mochimedia.com/archive/2011/05/08/statebox/) for more details.
+
+The excerpt below shows how `rts_stat_vnode` uses statebox to keep track of `sadd` operations.  The code for `srem` is identical except the `add_element` operation is replaced with `del_element`.  First off, notice that I bound my window strictly by time.  That is, each statebox will track all operations that have occurred within the `?STATEBOX_EXPIRE` window.  That means the number of operations tracked is unbounded and could potentially run amuck if there was a sudden write spike.  This also means that if a partition split lasts for longer than `?STATEBOX_EXPIRE` then there is potential to lose data.  I say potential because expiration must be performed explicitly and is only during during write time (as seen below) so if the network was to split but writes only occurred inside the window but the network wasn't healed until after no data would be lost because those older events haven't been expired yet.  If it hasn't hit you yet the uptake is that eventual consistency can be hard to reason about during failure scenarios and therefore you must think carefully about your data and your systems behavior.
+
+    handle_command({sadd, {ReqID, Coordinator}, StatName, Val},
+                   _Sender, #state{stats=Stats0}=State) ->
+        SB = 
+            case dict:find(StatName, Stats0) of
+                {ok, #rts_obj{val=SB0}=O} ->
+                    SB1 = statebox:modify({sets, add_element, [Val]}, SB0),
+                    SB2 = statebox:expire(?STATEBOX_EXPIRE, SB1),
+                    rts_obj:update(SB2, Coordinator, O);
+                error ->
+                    SB0 = statebox:new(fun sets:new/0),
+                    SB1 = statebox:modify({sets, add_element, [Val]}, SB0),
+                    VC0 = vclock:fresh(),
+                    VC = vclock:increment(Coordinator, VC0),
+                    #rts_obj{val=SB1, vclock=VC}
+            end,
+        Stats = dict:store(StatName, SB, Stats0),
+        {reply, {ok, ReqID}, State#state{stats=Stats}};
+
+
+If it wasn't clear already, statebox provides you with the means to reconcile conflicting objects (so long as they are amenable to being managed by statebox).  This is no more clearly shown than with the fragment below which shows how one reconciles with statebox.  Pretty simply, eh?  Thanks Bob!
+
+    reconcile([V|_]=Vals) when element(1, V) == statebox -> statebox:merge(Vals).
+
+Earlier I mentioned how something like the `agents` stat doesn't really need much in the way of reconciliation because it's an append-only set.  Even so I find it makes more sense just use statebox on all set-data regardless because it makes the code easier to reason about.

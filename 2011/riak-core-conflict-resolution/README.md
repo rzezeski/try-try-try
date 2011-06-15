@@ -1,6 +1,8 @@
 Riak Core, Conflict Resolution
 ==========
 
+**WARNING: THIS IS ALL SUBJECT TO CHANGE -- STILL A WORK IN PROGRESS -- COME BACK SOON**
+
 In the [previous post](https://github.com/rzezeski/try-try-try/tree/master/2011/riak-core-the-coordinator) I explained the role of a coordinator and showed how to implement one.  In this post I want to discuss the idea of _eventual consistency_ and how a system based on [Riak Core](https://github.com/basho/riak_core) goes about enforcing consistency in the face of chaos.
 
 When I think about _consistency_ I like to think about it in terms of entropy or chaos.  That is, entropy is the lack of consistency and consistency is the removal of entropy.  It's much like Socrates's _Theory of Opposites_ in that one must arise from the other and there is a process which transforms one to the other.  In the case of distributed systems _eventual consistency_ is the process of taking a system from entropy to consistency.
@@ -42,3 +44,97 @@ At the end of the last post I left you with a system that could tolerate node fa
     ./dev/dev3/bin/rts attach
     (rts3@127.0.0.1)1> rts:get("progski", "total_reqs").
     {ok,[not_found,19]}
+
+
+Conflict Resolution
+----------
+
+In the intro I told you that in a Core system you will generally handle inconsistencies in a lazy manner but I didn't tell you how you detect conflicts or how to fix them.  That's the topic of this section.
+
+### Vector Clocks ###
+
+Like Riak, I decided to use [vector clocks](http://wiki.basho.com/Vector-Clocks.html) in RTS to detect conflicting versions of the same object.  I created the [rts_obj](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-conflict-resolution/rts/src/rts_obj.erl) module to wrap the use of vclocks in a nice, contained package.  If you take a peek at [riak_object](https://github.com/basho/riak_kv/blob/riak_kv-0.14.2/src/riak_object.erl) you might notice some similarities.  Hopefully in the future we will bring some of this down to Core as it seems to be generally useful.  So what exactly are vector clocks?
+
+There are already posts about why vclocks are [easy](http://blog.basho.com/2010/01/29/why-vector-clocks-are-easy/) or [hard](http://blog.basho.com/2010/04/05/why-vector-clocks-are-hard/) depending on your perspective.  In this post I want to focus on the fact that vclocks allow you to give a logical ordering to multiple versions of the same object.  By assigning a logical timeline to each version you can then compare them to determine if a split occurred at some point in time.  If a split has occurred then it means there is potential that each version has data that the other is missing.  However, that is dependent on the data your object is storing.  For example, in the case of a set where elements are only ever added it hardly matters that two parallel version had the same element added because that would result in the same set.  Even in the case where different elements were added resolving their differences would be a simple matter of performing a union of the sets.  This is the case for the `agents` stat in RTS.  On the flip side are the counter stats such as `total_sent` which keeps track of the total number of bytes sent by a webserver.  If there are parallel versions then that means each version is missing the byte counts sent by the other versions.
+
+<table>
+  <tr>
+    <th>Node A</th>
+    <th>Node B</th>
+    <th>Node C</th>
+  </tr>
+
+  <tr>
+    <td align="center" colspan="3">total_sent + 500 on Coordinator A</td>
+  </tr>
+
+  <tr>
+    <td>500 [{A,1}]</td>
+    <td>500 [{A,1}]</td>
+    <td>500 [{A,1}]</td>
+  </tr>
+
+  <tr>
+    <td align="center" colspan="3">total_sent + 200 on Coordinator A</td>
+  </tr>
+
+  <tr>
+    <td>700 [{A,2}]</td>
+    <td>700 [{A,2}]</td>
+    <td>700 [{A,2}]</td>
+  </tr>
+
+  <tr>
+    <td align="center" colspan="3">total_sent + 350 on Coordinator C</td>
+  </tr>
+
+  <tr>
+    <td>1050 [{A,2}, {C,1}]</td>
+    <td>1050 [{A,2}, {C,1}]</td>
+    <td>1050 [{A,2}, {C,1}]</td>
+  </tr>
+
+  <tr>
+    <td align="center" colspan="3">Network Split -- (A,B), (C) </td>
+  </tr>
+
+  <tr>
+    <td align="center" colspan="3">total_sent + 100 on Coordinator C</td>
+  </tr>
+
+  <tr>
+    <td>1050 [{A,2}, {C,1}]</td>
+    <td>1050 [{A,2}, {C,1}]</td>
+    <td>1150 [{A,2}, {C,2}]</td>
+  </tr>
+
+  <tr>
+    <td align="center" colspan="3">total_sent + 500 on Coordinator B</td>
+  </tr>
+
+  <tr>
+    <td>1550 [{A,2}, {B,1}, {C,1}]</td>
+    <td>1550 [{A,2}, {B, 1}, {C,1}]</td>
+    <td>1150 [{A,2}, {C,2}]</td>
+  </tr>
+
+  <tr>
+    <td align="center" colspan="3">Network Repaired -- (A,B,C)</td>
+  </tr>
+
+  <tr>
+    <td align="center" colspan="3">total_sent + 50 on Coordinator A</td>
+  </tr>
+
+  <tr>
+    <td>1600 [{A,3}, {B,1}, {C,1}]</td>
+    <td>1600 [{A,3}, {B, 1}, {C,1}]</td>
+    <td>1200 [{A,3}, {C,2}]</td>
+  </tr>
+
+  <tr>
+    <td align="center" colspan="3">GET total_sent on Coordinator A</td>
+  </tr>
+</table>
+
+In the case above the object versions on `A` and `B` are missing `100` bytes that were added on `C` during the split.  If you look at the vector clocks you can see that `A` and `B` are identical but different from `C` which has one more operation logged under the `C` coordinator.  This indicates that these versions are conflicting and must be resolved.  What vector clocks don't do, however, are actually resolve the conflicts.

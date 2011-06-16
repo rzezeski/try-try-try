@@ -137,11 +137,80 @@ There are already posts about why vclocks are [easy](http://blog.basho.com/2010/
   </tr>
 </table>
 
-In the case above the object versions on `A` and `B` are missing `100` bytes that were added on `C` during the split.  If you look at the vector clocks you can see that `A` and `B` are identical but different from `C` which has one more operation logged under the `C` coordinator.  This indicates that these versions are conflicting and must be resolved.  What vector clocks don't do, however, are actually resolve the conflicts.
+In the case above the object versions on `A` and `B` are missing `100` bytes that were added on `C` during the split.  If you look at the vector clocks you can see that `A` and `B` are identical but different from `C` which has one more operation logged under the `C` coordinator.  This indicates that these versions are conflicting and must be resolved.
+
+This conflict detection is handled by the `rts_obj`, specifically the
+`merge` function is called by the `rts_get_fsm` (coordinator) to merge
+the vnode replies into one.  Typically, the replies will have a
+sequential, non-parallel ordering and merge will simply return the
+latest object in the logical timeline.  Otherwise, if parallel version
+exist, it will perform reconciliation of the values and merge the
+vector clocks.
+
+    merge([#rts_obj{}|_]=Objs) ->
+        case rts_obj:children(Objs) of
+            [] -> not_found;
+            [Child] -> Child;
+            Chldrn ->
+                Val = rts_get_fsm:reconcile(lists:map(fun val/1, Chldrn)),
+                MergedVC = vclock:merge(lists:map(fun vclock/1, Chldrn)),
+                #rts_obj{val=Val, vclock=MergedVC}
+        end.
+
+As you can see `merge` doesn't really detect conflicts itself but
+delegates to the `children/1` function.  The only way multiple
+children can occur is if conflicts exist.  If only one child exists
+than that must mean all objects follow linearly from one to the next.
+If you remove all ancestors from the unique list of objects then what
+you have left are the children.  Don't just take my word for it.
+Think about it and make sure you agree.
+
+    %% @doc Given a list of `rts_obj()' return a list of the children
+    %% objects.  Children are the descendants of all others objects.
+    children(Objs) ->
+        unique(Objs) -- ancestors(Objs).
+
+If you're still not convinced, perhaps looking at the definitions for
+`unique/1` and `ancestors/1` will help?  Note that `not_found` is a
+special case in that it is considered an ancestor of all values and
+therefore is generally filtered out and ignored by most operations.
+
+    %% @doc Given a list of `rts_obj()' return a list of all the
+    %% ancestors.  Ancestors are objects that all the other objects in the
+    %% list have descent from.
+    -spec ancestors([rts_obj()]) -> [rts_obj()].
+    ancestors(Objs0) ->
+        Objs = [O || O <- Objs0, O /= not_found],
+        As = [[O2 || O2 <- Objs,
+                     ancestor(O2#rts_obj.vclock,
+                              O1#rts_obj.vclock)] || O1 <- Objs],
+        unique(lists:flatten(As)).
+
+    %% @doc Predicate to determine if `Va' is ancestor of `Vb'.
+    -spec ancestor(vclock:vclock(), vclock:vclock()) -> boolean().
+    ancestor(Va, Vb) ->
+        vclock:descends(Vb, Va) andalso (vclock:descends(Va, Vb) == false).
+
+    %% @doc Given a list of `Objs' return the list of uniques.
+    -spec unique([rts_obj()]) -> [rts_obj()].
+    unique(Objs) ->
+        F = fun(not_found, Acc) ->
+                    Acc;
+               (Obj, Acc) ->
+                    case lists:any(equal(Obj), Acc) of
+                        true -> Acc;
+                        false -> [Obj|Acc]
+                    end
+            end,
+        lists:foldl(F, [], Objs).
+
+I hope I've be able to convince you that vector clocks are indeed a
+useful tool for detecting entropy in an eventually consistency system.
+Detecting conflicts is half the battle.  The other half is determining
+how to resolve them.
 
 
-Reconciling Conflicts
-----------
+### Reconciling Conflicts ###
 
 In order to reconcile conflicts in your system you have to know about the type of data you are storing in your system.  For example, in Riak the data is an opaque blob which means Riak can't really do much on it's own to resolve a conflict because it doesn't understand anything about the data it is storing.  By default Riak will implement a _Last Write Wins_ (LWW) behavior which will select the latest object version based on wall clock time.  If this is unacceptable then the user has the option to turning this feature off by setting `allow_mult` to true which will allow multiple versions to coexist and upon a read all versions will be returned to the caller who can then reconcile these versions in their appropriate context.
 
@@ -271,8 +340,7 @@ The next excerpt is responsible for reconciling divergent versions of `#incr` va
 That's all well and good for reconciling counters, but what about other types of data?
 
 
-Reconciling Conflicts With Statebox
-----------
+### Reconciling Conflicts With Statebox ###
 
 In RTS, along with counters, there are also sets.  Currently sets are only used to keep track of the various user agents that have hit your webserver.  In this case that means RTS is only ever adding data to the set and reconciliation can be as simple as a union.  However, the second you allow even on delete operation to occur things get murky.  Once again I'll use an example to demonstrate why.
 

@@ -13,7 +13,7 @@
 %% @pure
 %%
 %% @doc Given a list of `rts_obj()' return a list of all the
-%% ancesotrs.  Ancestors are objects that all the other objects in the
+%% ancestors.  Ancestors are objects that all the other objects in the
 %% list have descent from.
 -spec ancestors([rts_obj()]) -> [rts_obj()].
 ancestors(Objs0) ->

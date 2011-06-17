@@ -615,3 +615,95 @@ read like so and it would return the correct value.
 The key to remember is that multiple node failures, even with writes
 occurring, should be no different from a single failure as long as the
 number of failures is less than `N`.
+
+### Partitioned Writes ###
+
+Before I go into partitioned writes I want to say that the closer the
+nodes of your cluster are the rarer of an event this is.  For example,
+you're much more likely to run into this if your nodes are spread
+across data centers as opposed to a rack.  That said, Basho's flagship
+product, Riak, is designed to be deployed locally and if you want WAN
+support you should use replication.  I'm not sure if we do, or should,
+take the same stance on other applications built on Core.  In any
+case, the onus is on you, the developer, to understand your
+application's needs and this is one of the things you should take into
+account.  That is, you should ask yourself the questions "What's the
+likelihood that my cluster could partition?  How often and for how
+long?  Would such an event have a deleterious effect on my business or
+is it not such a big deal?"
+
+A _partition_, in regards to distributed systems, typically refers to
+when a cluster breaks apart and forms independent sub-clusters.  This
+event is really only dangerous, however, when more than one
+sub-cluster can still be reached by the outside world.  Why?  Because
+if two or more sub-clusters, or partitions, can receive writes for the
+same data but they can't coordinate with each other then you have the
+recipe for parallel versions of the same object.  Independently,
+these sub-clusters are consistent but once joined conflicts ensue and
+must be fixed.  That said, partitions can be more subtle and short
+lived than this.  For example, imagine a write request where 2 writes
+make it to their destination but the 3rd fails for whatever reason.
+This would cause a logical partition in the replica values until that
+replica was repaired.  In fact, if you think hard enough you'll
+realize that partitions are **always** occurring in an eventually
+consistent system like Riak because many actions are left to be
+performed asynchronously and in parallel.  In the case where you happen
+to read during a logical partition that's okay because conflict
+resolution will occur and you'll never be the wiser.  There are also
+some tricks that you can perform in these types of systems to garner
+more predicable consistency such as making a best effort to serialize
+all writes to an object on the same coordinator.  You can find some of
+these ideas in Werner Vogel's
+[Eventually Consistent - Revisited](http://www.allthingsdistributed.com/2008/12/eventually_consistent.html).
+
+A partition is really no different than a write after a node goes down
+in that it causes parallel versions which then causes conflict
+resolution to kick in and repair to occur.  I'm just going to continue
+the session from above by first restarting `rts1` and `rts2`.  This
+time we'll work with the `total_sent` stat to switch it up.
+
+    for d in dev/dev*; do $d/bin/rts start; done
+    ./dev/dev1/bin/rts attach
+    (rts1@127.0.0.1)1> rts:get("progski", "total_sent").
+    ...
+    (rts1@127.0.0.1)2> rts:get_dbg_preflist("progski", "total_sent").
+    ...
+
+Make sure the value is `95216` for all replicas.  Now let's perform a
+partitioned write on the sub-cluster `(rts2, rts3)`.
+
+    (rts1@127.0.0.1)5> rts:dbg_op(incrby, 'rts2@127.0.0.1', ['rts3@127.0.0.1'], "progski", "total_sent", 10000).
+    ok
+    (rts1@127.0.0.1)6> rts:get_dbg_preflist("progski", "total_sent").
+    ...
+
+In the call to `rts:dbg_op` I'm saying that I want to perform a
+partitioned write to `rts2` and `rts3` that adds `10000` to the
+`total_sent` stat. The 2nd is the coordinator node and the 3rd is the
+other nodes in the pretend sub-cluster.  You should confirm that two
+of the replica's now hold the value `105126`.  Performing a read at
+this point should cause a read repair.
+
+    (rts1@127.0.0.1)7> rts:get("progski", "total_sent").
+    105216
+    (rts1@127.0.0.1)8>
+    =ERROR REPORT==== 17-Jun-2011::00:39:17 ===
+    repair performed {rts_obj,{incr,105216,...
+
+    (rts1@127.0.0.1)8> rts:get_dbg_preflist("progski", "total_sent").
+    ...
+     {{1233142006497949337234359077604363797834693083136,
+       'rts1@127.0.0.1'},
+      {rts_obj,{incr,105216,
+    ...
+
+As you can see partitions aren't that difficult to reason about.  The
+key is to remember that the values stay consistent relative to the
+nodes that it can communicate with.  If 2 nodes split off to form a
+sub-cluster then any requests to those 2 nodes will be consistent in
+regards to that sub-cluster.  This may be undesirable in certain
+circumstances so Riak recently added the query parameters `PW` and
+`RW` which say that in order for a write or read to succeed it must
+reach a certain number of unique nodes.  For example, given the
+sub-cluster of 2 a `PW=3` would fail because only 2 nodes can be
+reached.

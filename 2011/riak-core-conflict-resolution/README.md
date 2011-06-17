@@ -601,10 +601,10 @@ What if you fail multiple nodes?
     (rts3@127.0.0.1)3> rts:get("progski", "GET").
     20
 
-You might be surprised that first read failed.  After all, even though
-two replicas reported `not_found` there is a local one with the
-correct value.  However, since the default is `R=2` and the
-`not_found` values happened to return first this is the value
+You might be surprised that first read returned `not_found`.  After
+all, even though two replicas reported `not_found` there is a local
+one with the correct value.  However, since the default is `R=2` and
+the `not_found` values happened to return first this is the value
 returned.  In this version of RTS I added an option to pass a
 different value of `R` to `get`.  You could have performed the first
 read like so and it would return the correct value.

@@ -470,3 +470,74 @@ made and then performs them.
             false ->
                 {stop, normal, SD}
         end.
+
+
+Failure Scenarios
+----------
+
+Now that I've explained how to 1) detect conflicts, 2) resolve
+conflicts, and 3) repair conflicts I want to discuss various failure
+scenarios and see if I can't show that these three things will lead to
+an eventually consistent system in most circumstances.  I'll try my
+best to go from simple to more convoluted.  I will cover only the
+scenarios that jump out to me as trying to cover all the different
+variations may lead to madness for both you and me.  I'll also be
+quoting shell sessions with RTS so that you can follow along if you
+like.
+
+**NOTE: All of these examples assume that data has already been
+  written via the following commands.**
+
+    for d in dev/dev*; do $d/bin/rts stop; done
+    for d in dev/dev*; do $d/bin/rts start; done
+    for d in dev/dev{2,3}; do $d/bin/rts-admin join rts1@127.0.0.1; done
+    ./dev/dev1/bin/rts-admin ringready
+    gunzip -c progski.access.log.gz | head -20 | ./replay --devrel progski
+
+It's probably also worth explaining two debugging functions I'll be
+using to help me test and demonstrate my scenarios.  The first is
+`get_dbg_preflist` which returns a list of `{{Index, Node}, Obj}`.
+That is it shows the mapping of vnodes to their respective values.
+The second function is `dbg_op` which allows me to fake partitioned
+writes.  A partitioned write is one that does not reach all it's
+destination vnodes.  This might happen for various reasons such as
+packet loss, switch/nic failure, etc.
+
+### Node Goes Down ###
+
+I think the first, most obvious, and probably simplest to reason about
+is the case where a single node crashes.
+
+    (rts1@127.0.0.1)1> rts:get("progski", "GET").
+    19
+    (rts1@127.0.0.1)2> rts:get_dbg_preflist("progski", "GET").
+    ...
+    Ctrl^C Ctrl^C
+
+First I check for sanity on `rts1` and then I run `get_dbg_preflist`
+to see the actually objects stored on each vnode.  In this case they
+should be identical.  Then I kill this node and attach to `rts2`.
+
+    (rts2@127.0.0.1)1> rts:get_dbg_preflist("progski", "GET").
+    ...
+     {{274031556999544297163190906134303066185487351808,
+       'rts2@127.0.0.1'},
+      not_found}]
+    ...
+    (rts2@127.0.0.1)2> rts:get("progski", "GET").
+    19
+    (rts2@127.0.0.1)3>
+    =ERROR REPORT==== 16-Jun-2011::22:34:01 ===
+    repair performed {rts_obj,{incr,19,...
+    (rts2@127.0.0.1)3> rts:get("progski", "GET").
+    19
+
+The first thing to do on `rts2` is verify that only two vnodes are
+left that contain this object.  I extracted part of the return value
+to demonstrate this above.  Next, perform a read.  At this point
+`merge` will return one child so no reconciliation is needed (remember
+a `not_found` is ancestor to all), `needs_repair` will return true
+since not all objects are equal, and then a read repair will be
+performed by calling `repair`.  Once again, I quoted an excerpt from
+the shell demonstrating this.  Notice there is no repair after the
+second read because it has already been repaired.

@@ -541,3 +541,77 @@ since not all objects are equal, and then a read repair will be
 performed by calling `repair`.  Once again, I quoted an excerpt from
 the shell demonstrating this.  Notice there is no repair after the
 second read because it has already been repaired.
+
+Let's raise the stakes a bit here by taking a node down and then
+performing a write before a read.  This should cause the replica
+values to conflict.
+
+First bring `rts1` back up and perform read repair to get back to the
+initial state.  Then bring it back down :)
+
+    for d in dev/dev*; do $d/bin/rts start; done
+    (rts1@127.0.0.1)1> rts:get("progski", "GET").
+    Ctrl^C Ctrl^C
+
+Now attach to `rts2` and confirm one replica reports `not_found`.
+
+    ./dev/dev2/bin/rts attach
+    (rts2@127.0.0.1)1> rts:get_dbg_preflist("progski", "GET").
+    ...
+     {{274031556999544297163190906134303066185487351808,
+       'rts2@127.0.0.1'},
+    ...
+
+Increment the `GET` stat, confirm conflicting values, and then perform
+a read.  If everything goes well the read should return `20`.
+
+    (rts2@127.0.0.1)3> rts:incr("progski", "GET").
+    ok
+    (rts2@127.0.0.1)4> rts:get_dbg_preflist("progski", "GET").
+    ...
+     {{274031556999544297163190906134303066185487351808,
+       'rts2@127.0.0.1'},
+      {rts_obj,{incr,1,
+    ...
+    (rts2@127.0.0.1)5> rts:get("progski", "GET").
+    20
+    (rts2@127.0.0.1)6>
+    =ERROR REPORT==== 16-Jun-2011::23:24:07 ===
+    repair performed {rts_obj,{incr,20,...
+    (rts2@127.0.0.1)6> rts:get_dbg_preflist("progski", "GET").
+
+What if you fail multiple nodes?
+
+    Ctrl^C Ctrl^C
+    ./dev/dev3/bin/rts attach
+    (rts3@127.0.0.1)1> rts:get_dbg_preflist("progski", "GET").
+    ...
+     {{274031556999544297163190906134303066185487351808,
+       'rts3@127.0.0.1'},
+      not_found},
+     {{296867520082839655260123481645494988367611297792,
+       'rts3@127.0.0.1'},
+      not_found}]
+    ...
+    (rts3@127.0.0.1)2> rts:get("progski", "GET").
+    not_found
+    (rts3@127.0.0.1)3>
+    =ERROR REPORT==== 16-Jun-2011::23:29:48 ===
+    repair performed {rts_obj,{incr,20,...
+    (rts3@127.0.0.1)3> rts:get("progski", "GET").
+    20
+
+You might be surprised that first read failed.  After all, even though
+two replicas reported `not_found` there is a local one with the
+correct value.  However, since the default is `R=2` and the
+`not_found` values happened to return first this is the value
+returned.  In this version of RTS I added an option to pass a
+different value of `R` to `get`.  You could have performed the first
+read like so and it would return the correct value.
+
+    (rts3@127.0.0.1)4> rts:get("progski", "GET", [{r,3}]).
+    20
+
+The key to remember is that multiple node failures, even with writes
+occurring, should be no different from a single failure as long as the
+number of failures is less than `N`.

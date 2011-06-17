@@ -433,3 +433,40 @@ If it wasn't clear already, statebox provides you with the means to reconcile co
     reconcile([V|_]=Vals) when element(1, V) == statebox -> statebox:merge(Vals).
 
 Earlier I mentioned how something like the `agents` stat doesn't really need much in the way of reconciliation because it's an append-only set.  Even so I find it makes more sense just use statebox on all set-data regardless because it makes the code easier to reason about.
+
+
+Read Repair
+----------
+
+At this point I've shown you how to detect conflicts and reconcile
+them, but that's still not enough.  After the system detects a
+conflict it should fix it so that it doesn't have to repeat the
+reconciliation process for each subsequent read.  One method is
+something called _read repair_ which takes advantage of the fact that
+the data has already been accessed so the system might as well go the
+last mile and repair any replicas that are in conflict with the
+reconciled object.  I like to refer to this type of anti-entropy as
+_passive anti-entropy_ because it is secondary to some other primary
+action.  This is opposed to _active anti-entropy_ such as background
+gossiped _Merkle Trees_ which is preemptive and a primary action in
+it's own right.
+
+In RTS I added a state for the read coordinator (`rts_get_fsm`) named
+`finalize`.  This state will not be entered until all `N` replies
+have been accounted for.  At this point it performs another merge.
+The reason for the second merge (remember the first one is done after
+the `R` quorum is met) and thus not just using the value of the first
+merge is because `R` may be less than `N` and in that case not all
+objects were accounted for in the first merge.  After the merge is
+performed a check is made to determine if and where repairs need to be
+made and then performs them.
+
+    finalize(timeout, SD=#state{replies=Replies, stat_name=StatName}) ->
+        MObj = merge(Replies),
+        case needs_repair(MObj, Replies) of
+            true ->
+                repair(StatName, MObj, Replies),
+                {stop, normal, SD};
+            false ->
+                {stop, normal, SD}
+        end.

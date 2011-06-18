@@ -3,22 +3,106 @@ Riak Core, Conflict Resolution
 
 **WARNING: THIS IS ALL SUBJECT TO CHANGE -- STILL A WORK IN PROGRESS -- COME BACK SOON**
 
-In the [previous post](https://github.com/rzezeski/try-try-try/tree/master/2011/riak-core-the-coordinator) I explained the role of a coordinator and showed how to implement one.  In this post I want to discuss the idea of _eventual consistency_ and how a system based on [Riak Core](https://github.com/basho/riak_core) goes about enforcing consistency in the face of chaos.
+In the
+[previous post](https://github.com/rzezeski/try-try-try/tree/master/2011/riak-core-the-coordinator)
+I explained the role of a coordinator and showed how to implement one.
+In this post I want to discuss the idea of _eventual consistency_ and
+how a system based on [Riak Core](https://github.com/basho/riak_core)
+goes about enforcing consistency in the face of chaos.
 
-When I think about _consistency_ I like to think about it in terms of entropy or chaos.  That is, entropy is the lack of consistency and consistency is the removal of entropy.  It's much like Socrates's _Theory of Opposites_ in that one must arise from the other and there is a process which transforms one to the other.  In the case of distributed systems _eventual consistency_ is the process of taking a system from entropy to consistency.
+When I think about _consistency_ I like to think about it in terms of
+entropy or chaos.  That is, entropy is the lack of consistency and
+consistency is the removal of entropy.  It's much like Socrates's
+_Theory of Opposites_ in that one must arise from the other and there
+is a process which transforms one to the other.  In the case of
+distributed systems _eventual consistency_ is the process of taking a
+system from entropy to consistency.
 
-That's all well and good, and if you like philosophy you might even find my definition cute, but it doesn't necessarily help you, the reader, understand the situation any better.  I'll start with something most of us understand, a single-machine RDBMS, and move towards something like Riak by comparing the two in terms of consistency.  I think it's safe to say most of us have at least a basic understanding of how a single-machine RDBMS works.  You build a schema, maybe write some constraints, and then insert and query data via SQL.  More importantly, there is a notion of something called a _transaction_ and it enforces a set of rules ubiquitously referred to by the acronym _ACID_ (Atomic Consistent Isolated Durable).  Notice the word _Consistent_ is baked right into the acronym but that's a different consistency than I'm talking about here.  No, I'm more interested in the _Atomic_ and _Isolated_ parts of the acronym.  It's these parts of ACID that give a RDBMS it's predictable behavior even in the face of concurrency.  One transaction cannot affect another concurrent transaction (i.e. one can't see the others modifications) and the **entire** transaction must succeed or fail (i.e. there is no chance of partial completion).  You can take the pessimistic approach and lock the data while a transaction is taking place or you can be optimistic and perform transactions concurrently with the potential that some might have to be retried.  In any case, the RDBMS will ensure the transaction has completed in full and all other transactions will see the new state before they may complete.  This means that modifications are serialized, i.e. applied in-full one after another always working with the "latest" state of the database.  Thought of another way, a RDBMS system enforces consistency up-front, before the data is written.  However, this up-front consistency doesn't come free.  It requires coordination in order to enforce ACID.  In the case of a single-machine deployment this could mean rising latency on a highly contended piece of data.  In the case of a multi-machine deployment we are talking about not only rising latencies but also the lose of availability if one of the nodes goes down or a network partition occurs.  After all, how can you enforce consistency across all nodes if all nodes cannot talk to each other?
+That's all well and good, and if you like philosophy you might even
+find my definition cute, but it doesn't necessarily help you, the
+reader, understand the situation any better.  I'll start with
+something most of us understand, a single-machine RDBMS, and move
+towards something like Riak by comparing the two in terms of
+consistency.  I think it's safe to say most of us have at least a
+basic understanding of how a single-machine RDBMS works.  You build a
+schema, maybe write some constraints, and then insert and query data
+via SQL.  More importantly, there is a notion of something called a
+_transaction_ and it enforces a set of rules ubiquitously referred to
+by the acronym _ACID_ (Atomic Consistent Isolated Durable).  Notice
+the word _Consistent_ is baked right into the acronym but that's a
+different consistency than I'm talking about here.  No, I'm more
+interested in the _Atomic_ and _Isolated_ parts of the acronym.  It's
+these parts of ACID that give a RDBMS it's predictable behavior even
+in the face of concurrency.  One transaction cannot affect another
+concurrent transaction (i.e. one can't see the others modifications)
+and the **entire** transaction must succeed or fail (i.e. there is no
+chance of partial completion).  You can take the pessimistic approach
+and lock the data while a transaction is taking place or you can be
+optimistic and perform transactions concurrently with the potential
+that some might have to be retried.  In any case, the RDBMS will
+ensure the transaction has completed in full and all other
+transactions will see the new state before they may complete.  This
+means that modifications are serialized, i.e. applied in-full one
+after another always working with the "latest" state of the database.
+Thought of another way, a RDBMS system enforces consistency up-front,
+before the data is written.  However, this up-front consistency
+doesn't come free.  It requires coordination in order to enforce ACID.
+In the case of a single-machine deployment this could mean rising
+latency on a highly contended piece of data.  In the case of a
+multi-machine deployment we are talking about not only rising
+latencies but also the lose of availability if one of the nodes goes
+down or a network partition occurs.  After all, how can you enforce
+consistency across all nodes if all nodes cannot talk to each other?
 
-Riak takes a different approach.  It embraces potential inconsistency in return for lower latency and availability.  If a node goes down or the network partitions the data is still available for read and write, it just might become inconsistent causing multiple concurrent versions to exist.  Does that mean Riak just throws up it's hands and returns crap data?  Absolutely not, it pushes the enforcement of consistency to read time and furthermore only considers consistency in terms of the nodes it can see.  That is, if the cluster splits into two then a read won't fail but instead will use the data it has access to determine a response.  When the cluster repairs and another read occurs the system will then take that time to perform _conflict resolution_ in order to reconcile any inconsistencies that were created by the cluster split.  That is, Riak and systems like it build atop Riak Core, are lazy in their enforcement of consistency.  Choosing to delay it until absolutely needed.
+Riak takes a different approach.  It embraces potential inconsistency
+in return for lower latency and availability.  If a node goes down or
+the network partitions the data is still available for read and write,
+it just might become inconsistent causing multiple concurrent versions
+to exist.  Does that mean Riak just throws up it's hands and returns
+crap data?  Absolutely not, it pushes the enforcement of consistency
+to read time and furthermore only considers consistency in terms of
+the nodes it can see.  That is, if the cluster splits into two then a
+read won't fail but instead will use the data it has access to
+determine a response.  When the cluster repairs and another read
+occurs the system will then take that time to perform _conflict
+resolution_ in order to reconcile any inconsistencies that were
+created by the cluster split.  That is, Riak and systems like it build
+atop Riak Core, are lazy in their enforcement of consistency.
+Choosing to delay it until absolutely needed.
 
-Notice I am not saying one is better than the other.  Both have their place and the ultimate system would allow you to choose the semantics of your data storage on an as-needed basis.  To a certain extent Riak allows you to do this via it's quorum parameters but even something like `W = M` (that is, all writes must finish before call returns) doesn't get you the consistency found in RDBMS.
+Notice I am not saying one is better than the other.  Both have their
+place and the ultimate system would allow you to choose the semantics
+of your data storage on an as-needed basis.  To a certain extent Riak
+allows you to do this via it's quorum parameters but even something
+like `W = M` (that is, all writes must finish before call returns)
+doesn't get you the consistency found in RDBMS.
 
-Unfortunately, Riak Core doesn't do a whole lot to guide you in this department.  In it's defense, until recently, Core was just a bunch of code hard-wired into Riak and it's covering new ground in the sense that it attempts to be a general framework or foundation to build distributed, scalable, highly-available applications.  Furthermore, the idea of _consistency_ and how to enforce it seem to be very application dependent and it will take time for us to discover the generalities and encode them in Core.  There is the [riak_object](https://github.com/basho/riak_kv/blob/master/src/riak_object.erl) which contains a basic wrapper for storing data in a Riak Core app utilizing vector clocks to detect entropy but unfortunately it's relevant bits haven't been pulled down to Core yet.  There is also work being done by others in this area such as Mochi Media's [statebox](https://github.com/mochi/statebox) abstraction which can be stored as a value inside a `riak_object` and allows you to resolve conflicts specific to certain types of data structures such as sets (which I'll cover later in this post).
+Unfortunately, Riak Core doesn't do a whole lot to guide you in this
+department.  In it's defense, until recently, Core was just a bunch of
+code hard-wired into Riak and it's covering new ground in the sense
+that it attempts to be a general framework or foundation to build
+distributed, scalable, highly-available applications.  Furthermore,
+the idea of _consistency_ and how to enforce it seem to be very
+application dependent and it will take time for us to discover the
+generalities and encode them in Core.  There is the
+[riak_object](https://github.com/basho/riak_kv/blob/master/src/riak_object.erl)
+which contains a basic wrapper for storing data in a Riak Core app
+utilizing vector clocks to detect entropy but unfortunately it's
+relevant bits haven't been pulled down to Core yet.  There is also
+work being done by others in this area such as Mochi Media's
+[statebox](https://github.com/mochi/statebox) abstraction which can be
+stored as a value inside a `riak_object` and allows you to resolve
+conflicts specific to certain types of data structures such as sets
+(which I'll cover later in this post).
 
 Previous Episode
 ----------
 
-At the end of the last post I left you with a system that could tolerate node failures but wasn't very smart about how it acted afterward.  That is, if one of the first two nodes returned `not_found` then the caller would get back a list of `[not_found, Val]`.  Lets verify that before moving on.
+At the end of the last post I left you with a system that could
+tolerate node failures but wasn't very smart about how it acted
+afterward.  That is, if one of the first two nodes returned
+`not_found` then the caller would get back a list of
+`[not_found, Val]`.  Lets verify that before moving on.
 
     make
     make devrel
@@ -49,13 +133,44 @@ At the end of the last post I left you with a system that could tolerate node fa
 Conflict Resolution
 ----------
 
-In the intro I told you that in a Core system you will generally handle inconsistencies in a lazy manner but I didn't tell you how you detect conflicts or how to fix them.  That's the topic of this section.
+In the intro I told you that in a Core system you will generally
+handle inconsistencies in a lazy manner but I didn't tell you how you
+detect conflicts or how to fix them.  That's the topic of this
+section.
 
 ### Vector Clocks ###
 
-Like Riak, I decided to use [vector clocks](http://wiki.basho.com/Vector-Clocks.html) in RTS to detect conflicting versions of the same object.  I created the [rts_obj](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-conflict-resolution/rts/src/rts_obj.erl) module to wrap the use of vclocks in a nice, contained package.  If you take a peek at [riak_object](https://github.com/basho/riak_kv/blob/riak_kv-0.14.2/src/riak_object.erl) you might notice some similarities.  Hopefully in the future we will bring some of this down to Core as it seems to be generally useful.  So what exactly are vector clocks?
+Like Riak, I decided to use
+[vector clocks](http://wiki.basho.com/Vector-Clocks.html) in RTS to
+detect conflicting versions of the same object.  I created the
+[rts_obj](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-conflict-resolution/rts/src/rts_obj.erl)
+module to wrap the use of vclocks in a nice, contained package.  If
+you take a peek at
+[riak_object](https://github.com/basho/riak_kv/blob/riak_kv-0.14.2/src/riak_object.erl)
+you might notice some similarities.  Hopefully in the future we will
+bring some of this down to Core as it seems to be generally useful.
+So what exactly are vector clocks?
 
-There are already posts about why vclocks are [easy](http://blog.basho.com/2010/01/29/why-vector-clocks-are-easy/) or [hard](http://blog.basho.com/2010/04/05/why-vector-clocks-are-hard/) depending on your perspective.  In this post I want to focus on the fact that vclocks allow you to give a logical ordering to multiple versions of the same object.  By assigning a logical timeline to each version you can then compare them to determine if a split occurred at some point in time.  If a split has occurred then it means there is potential that each version has data that the other is missing.  However, that is dependent on the data your object is storing.  For example, in the case of a set where elements are only ever added it hardly matters that two parallel version had the same element added because that would result in the same set.  Even in the case where different elements were added resolving their differences would be a simple matter of performing a union of the sets.  This is the case for the `agents` stat in RTS.  On the flip side are the counter stats such as `total_sent` which keeps track of the total number of bytes sent by a webserver.  If there are parallel versions then that means each version is missing the byte counts sent by the other versions.
+There are already posts about why vclocks are
+[easy](http://blog.basho.com/2010/01/29/why-vector-clocks-are-easy/)
+or
+[hard](http://blog.basho.com/2010/04/05/why-vector-clocks-are-hard/)
+depending on your perspective.  In this post I want to focus on the
+fact that vclocks allow you to give a logical ordering to multiple
+versions of the same object.  By assigning a logical timeline to each
+version you can then compare them to determine if a split occurred at
+some point in time.  If a split has occurred then it means there is
+potential that each version has data that the other is missing.
+However, that is dependent on the data your object is storing.  For
+example, in the case of a set where elements are only ever added it
+hardly matters that two parallel version had the same element added
+because that would result in the same set.  Even in the case where
+different elements were added resolving their differences would be a
+simple matter of performing a union of the sets.  This is the case for
+the `agents` stat in RTS.  On the flip side are the counter stats such
+as `total_sent` which keeps track of the total number of bytes sent by
+a webserver.  If there are parallel versions then that means each
+version is missing the byte counts sent by the other versions.
 
 <table>
   <tr>
@@ -137,7 +252,12 @@ There are already posts about why vclocks are [easy](http://blog.basho.com/2010/
   </tr>
 </table>
 
-In the case above the object versions on `A` and `B` are missing `100` bytes that were added on `C` during the split.  If you look at the vector clocks you can see that `A` and `B` are identical but different from `C` which has one more operation logged under the `C` coordinator.  This indicates that these versions are conflicting and must be resolved.
+In the case above the object versions on `A` and `B` are missing `100`
+bytes that were added on `C` during the split.  If you look at the
+vector clocks you can see that `A` and `B` are identical but different
+from `C` which has one more operation logged under the `C`
+coordinator.  This indicates that these versions are conflicting and
+must be resolved.
 
 This conflict detection is handled by the `rts_obj`, specifically the
 `merge` function is called by the `rts_get_fsm` (coordinator) to merge
@@ -212,9 +332,34 @@ how to resolve them.
 
 ### Reconciling Conflicts ###
 
-In order to reconcile conflicts in your system you have to know about the type of data you are storing in your system.  For example, in Riak the data is an opaque blob which means Riak can't really do much on it's own to resolve a conflict because it doesn't understand anything about the data it is storing.  By default Riak will implement a _Last Write Wins_ (LWW) behavior which will select the latest object version based on wall clock time.  If this is unacceptable then the user has the option to turning this feature off by setting `allow_mult` to true which will allow multiple versions to coexist and upon a read all versions will be returned to the caller who can then reconcile these versions in their appropriate context.
+In order to reconcile conflicts in your system you have to know about
+the type of data you are storing in your system.  For example, in Riak
+the data is an opaque blob which means Riak can't really do much on
+it's own to resolve a conflict because it doesn't understand anything
+about the data it is storing.  By default Riak will implement a _Last
+Write Wins_ (LWW) behavior which will select the latest object version
+based on wall clock time.  If this is unacceptable then the user has
+the option to turning this feature off by setting `allow_mult` to true
+which will allow multiple versions to coexist and upon a read all
+versions will be returned to the caller who can then reconcile these
+versions in their appropriate context.
 
-However, it's not always just enough to have the differing object versions to reconcile an object.  Many times you will need supplementary data that puts those versions in context.  Returning to the example above, on that final two versions of the object would be returned with two values: `1600` and `1200`.  Now, I hope it's clear to everyone that you can't just add these two numbers to get the reconciled version, because that would be too large a number.  Likewise, you can't just pick the largest number because that would be too small a number.  In order to determine the correct number more context is needed than just the values.  One way to do this (but not the only way, there was a very recent addition to statebox to do the same thing) is by a separate count for each coordinator.  In that case the total is always the sum of the max of all coordinators.  I think this is more clearly demonstrate by returning to the example above but instead using the `incr` operation as an example which is really just a specific instance of `incrby`.
+However, it's not always just enough to have the differing object
+versions to reconcile an object.  Many times you will need
+supplementary data that puts those versions in context.  Returning to
+the example above, on that final two versions of the object would be
+returned with two values: `1600` and `1200`.  Now, I hope it's clear
+to everyone that you can't just add these two numbers to get the
+reconciled version, because that would be too large a number.
+Likewise, you can't just pick the largest number because that would be
+too small a number.  In order to determine the correct number more
+context is needed than just the values.  One way to do this (but not
+the only way, there was a very recent addition to statebox to do the
+same thing) is by a separate count for each coordinator.  In that case
+the total is always the sum of the max of all coordinators.  I think
+this is more clearly demonstrate by returning to the example above but
+instead using the `incr` operation as an example which is really just
+a specific instance of `incrby`.
 
 <table>
   <tr>
@@ -296,13 +441,37 @@ However, it's not always just enough to have the differing object versions to re
   </tr>
 </table>
 
-The keen reader will notice that the context data is isomorphic to a vector clock so I just use the same structure to represent both.  In fact, an earlier iteration of the code used the vector clock directly to resolve conflicts until I realized this was probably poor form so I added an explicit context structure.  What should the resolved value be?  Counting all occurrences of `incr` in the table above would rightly get you the value `6`, but my proposed context doesn't store every incr op performed, or does it?  Notice that the context stores the total number of operations performed by each coordinator and we know each of these is an `incr` operation.  By summing the max count for each coordinator we get the correct result.
+The keen reader will notice that the context data is isomorphic to a
+vector clock so I just use the same structure to represent both.  In
+fact, an earlier iteration of the code used the vector clock directly
+to resolve conflicts until I realized this was probably poor form so I
+added an explicit context structure.  What should the resolved value
+be?  Counting all occurrences of `incr` in the table above would
+rightly get you the value `6`, but my proposed context doesn't store
+every incr op performed, or does it?  Notice that the context stores
+the total number of operations performed by each coordinator and we
+know each of these is an `incr` operation.  By summing the max count
+for each coordinator we get the correct result.
 
     Reconciled Object = {A,3} + {B,1} + {C,2} => 6 [{A,3}, {B,1}, {C,2}]
 
-Another way to reason about this is that during the split both the `AB` and `C` cluster missed a count.  Since both have seen `5` counts up to the read adding `1` to either side will arrive at `6`.  Alright, this is supposed to be a **working** blog post so how about some code?
+Another way to reason about this is that during the split both the
+`AB` and `C` cluster missed a count.  Since both have seen `5` counts
+up to the read adding `1` to either side will arrive at `6`.  Alright,
+this is supposed to be a **working** blog post so how about some code?
 
-The excerpt below comes from [rts_stat_vnode](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-conflict-resolution/rts/src/rts_stat_vnode.erl) and is responsible for not only incrementing the value (as it did before) but now must also keep tract of the context which is stored under the `#incr` record's element `counts`.  The `counts` element contains a dict that maps `Coordinator` nodes to their respective total count.  Notice that the `Coordinator` value is passed down from the coordinator itself (remember from the last post it is the coordinator that interacts with the vnodes).  This is important because the vnode, by nature, is probably running on a different node from the coordinator and you only want to bump the count of the node you saw the operation come in on.
+The excerpt below comes from
+[rts_stat_vnode](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-conflict-resolution/rts/src/rts_stat_vnode.erl)
+and is responsible for not only incrementing the value (as it did
+before) but now must also keep tract of the context which is stored
+under the `#incr` record's element `counts`.  The `counts` element
+contains a dict that maps `Coordinator` nodes to their respective
+total count.  Notice that the `Coordinator` value is passed down from
+the coordinator itself (remember from the last post it is the
+coordinator that interacts with the vnodes).  This is important
+because the vnode, by nature, is probably running on a different node
+from the coordinator and you only want to bump the count of the node
+you saw the operation come in on.
 
     handle_command({incrby, {ReqID, Coordinator}, StatName, IncrBy}, _Sender, #state{stats=Stats0}=State) ->
         Obj =
@@ -323,7 +492,13 @@ The excerpt below comes from [rts_stat_vnode](https://github.com/rzezeski/try-tr
         {reply, {ok, ReqID}, State#state{stats=Stats}};
 
 
-The next excerpt is responsible for reconciling divergent versions of `#incr` values.  I feel like I could probably clean this up but the main thing to take away is that it uses the context data to determine the max count for each coordinator and then sums them up to arrive at the resolved total.  Make sure to notice that it returns a new `#incr` value that has both the new `Total` **and** the max count from each coordinator.
+The next excerpt is responsible for reconciling divergent versions of
+`#incr` values.  I feel like I could probably clean this up but the
+main thing to take away is that it uses the context data to determine
+the max count for each coordinator and then sums them up to arrive at
+the resolved total.  Make sure to notice that it returns a new `#incr`
+value that has both the new `Total` **and** the max count from each
+coordinator.
 
     -spec reconcile([A::any()]) -> A::any().
     reconcile([#incr{}|_]=Vals) ->
@@ -342,9 +517,15 @@ That's all well and good for reconciling counters, but what about other types of
 
 ### Reconciling Conflicts With Statebox ###
 
-In RTS, along with counters, there are also sets.  Currently sets are only used to keep track of the various user agents that have hit your webserver.  In this case that means RTS is only ever adding data to the set and reconciliation can be as simple as a union.  However, the second you allow even on delete operation to occur things get murky.  Once again I'll use an example to demonstrate why.
+In RTS, along with counters, there are also sets.  Currently sets are
+only used to keep track of the various user agents that have hit your
+webserver.  In this case that means RTS is only ever adding data to
+the set and reconciliation can be as simple as a union.  However, the
+second you allow even on delete operation to occur things get murky.
+Once again I'll use an example to demonstrate why.
 
-Lets say I add a stat to RTS that tracks user login/logout events and keep track of all currently logged-in users via a set.
+Lets say I add a stat to RTS that tracks user login/logout events and
+keep track of all currently logged-in users via a set.
 
 <table>
   <tr>
@@ -401,13 +582,55 @@ Lets say I add a stat to RTS that tracks user login/logout events and keep track
   </tr>
 </table>
 
-After the partition heals if RTS were to simply union the sets then it would appear as if both `rzezeski` and `whilton` are still online when in fact they are both offline.  Zoinks!  As with counters, we need context to resolve this correctly.  More specifically, we need to know the operations that occurred during the network split so that we may replay them after it has been healed.  This is exactly what [statebox](https://github.com/mochi/statebox) provides you with.
+After the partition heals if RTS were to simply union the sets then it
+would appear as if both `rzezeski` and `whilton` are still online when
+in fact they are both offline.  Zoinks!  As with counters, we need
+context to resolve this correctly.  More specifically, we need to know
+the operations that occurred during the network split so that we may
+replay them after it has been healed.  This is exactly what
+[statebox](https://github.com/mochi/statebox) provides you with.
 
-Essentially, statebox provides you with a **window** of events that lead up to the current value.  I emphasize window because it's limited in scope.  You can't remember every event because then it becomes too expensive both in the space to store it and the time to traverse it (replay events).  Plus, if your cluster is well connected most of the time there is no reason to remember older events that have since been propagated throughout.  The tricky part is when a partition occurs.  While statebox saves you a lot of trouble it isn't fool proof.  The key is that your statebox window must be larger than the partition window (it terms of time and number of operations) or else you **will** lose events and thus lose data.  Whether that's acceptable depends entirely on your specific application and it's data requirements.
+Essentially, statebox provides you with a **window** of events that
+lead up to the current value.  I emphasize window because it's limited
+in scope.  You can't remember every event because then it becomes too
+expensive both in the space to store it and the time to traverse it
+(replay events).  Plus, if your cluster is well connected most of the
+time there is no reason to remember older events that have since been
+propagated throughout.  The tricky part is when a partition occurs.
+While statebox saves you a lot of trouble it isn't fool proof.  The
+key is that your statebox window must be larger than the partition
+window (it terms of time and number of operations) or else you
+**will** lose events and thus lose data.  Whether that's acceptable
+depends entirely on your specific application and it's data
+requirements.
 
-Returning to the example, statebox would determine that even though the union of the two sets is indeed `{rzezeski, whilton}` that two deletes have occurred, one for each user, and that the correct value is actually an empty set, `{}`.  Statebox does this by selecting one of the values and then applying the union of all **operations** that have occurred.  This means statebox is limited in the type of values in can deal with.  Please see this [post](http://labs.mochimedia.com/archive/2011/05/08/statebox/) for more details.
+Returning to the example, statebox would determine that even though
+the union of the two sets is indeed `{rzezeski, whilton}` that two
+deletes have occurred, one for each user, and that the correct value
+is actually an empty set, `{}`.  Statebox does this by selecting one
+of the values and then applying the union of all **operations** that
+have occurred.  This means statebox is limited in the type of values
+in can deal with.  Please see this
+[post](http://labs.mochimedia.com/archive/2011/05/08/statebox/) for
+more details.
 
-The excerpt below shows how `rts_stat_vnode` uses statebox to keep track of `sadd` operations.  The code for `srem` is identical except the `add_element` operation is replaced with `del_element`.  First off, notice that I bound my window strictly by time.  That is, each statebox will track all operations that have occurred within the `?STATEBOX_EXPIRE` window.  That means the number of operations tracked is unbounded and could potentially run amuck if there was a sudden write spike.  This also means that if a partition split lasts for longer than `?STATEBOX_EXPIRE` then there is potential to lose data.  I say potential because expiration must be performed explicitly and is only during during write time (as seen below) so if the network was to split but writes only occurred inside the window but the network wasn't healed until after no data would be lost because those older events haven't been expired yet.  If it hasn't hit you yet the uptake is that eventual consistency can be hard to reason about during failure scenarios and therefore you must think carefully about your data and your systems behavior.
+The excerpt below shows how `rts_stat_vnode` uses statebox to keep
+track of `sadd` operations.  The code for `srem` is identical except
+the `add_element` operation is replaced with `del_element`.  First
+off, notice that I bound my window strictly by time.  That is, each
+statebox will track all operations that have occurred within the
+`?STATEBOX_EXPIRE` window.  That means the number of operations
+tracked is unbounded and could potentially run amuck if there was a
+sudden write spike.  This also means that if a partition split lasts
+for longer than `?STATEBOX_EXPIRE` then there is potential to lose
+data.  I say potential because expiration must be performed explicitly
+and is only during during write time (as seen below) so if the network
+was to split but writes only occurred inside the window but the
+network wasn't healed until after no data would be lost because those
+older events haven't been expired yet.  If it hasn't hit you yet the
+uptake is that eventual consistency can be hard to reason about during
+failure scenarios and therefore you must think carefully about your
+data and your systems behavior.
 
     handle_command({sadd, {ReqID, Coordinator}, StatName, Val},
                    _Sender, #state{stats=Stats0}=State) ->
@@ -428,11 +651,19 @@ The excerpt below shows how `rts_stat_vnode` uses statebox to keep track of `sad
         {reply, {ok, ReqID}, State#state{stats=Stats}};
 
 
-If it wasn't clear already, statebox provides you with the means to reconcile conflicting objects (so long as they are amenable to being managed by statebox).  This is no more clearly shown than with the fragment below which shows how one reconciles with statebox.  Pretty simply, eh?  Thanks Bob!
+If it wasn't clear already, statebox provides you with the means to
+reconcile conflicting objects (so long as they are amenable to being
+managed by statebox).  This is no more clearly shown than with the
+fragment below which shows how one reconciles with statebox.  Pretty
+simply, eh?  Thanks Bob!
 
     reconcile([V|_]=Vals) when element(1, V) == statebox -> statebox:merge(Vals).
 
-Earlier I mentioned how something like the `agents` stat doesn't really need much in the way of reconciliation because it's an append-only set.  Even so I find it makes more sense just use statebox on all set-data regardless because it makes the code easier to reason about.
+Earlier I mentioned how something like the `agents` stat doesn't
+really need much in the way of reconciliation because it's an
+append-only set.  Even so I find it makes more sense just use statebox
+on all set-data regardless because it makes the code easier to reason
+about.
 
 
 Read Repair

@@ -707,3 +707,71 @@ circumstances so Riak recently added the query parameters `PW` and
 reach a certain number of unique nodes.  For example, given the
 sub-cluster of 2 a `PW=3` would fail because only 2 nodes can be
 reached.
+
+### Partitioned Writes and Node Down ###
+
+What happens when you combine the two scenarios above?  Similar to
+partitioned writes you have the chance for parallel versions.  Similar
+to node failure, you have the chance for both parallel versions and
+data loss if more than `N` nodes fail.  However, when combined there
+is a chance that you can lose data when less than `N` nodes fail.
+Think of the case where a sub-cluster of **one** node forms, accepts
+some writes, and then fails.  At this point the **only** physical node
+that knows about this new data just failed and thus it has been lost.
+I'm assuming here, like in the case of RTS, that all storage is in
+ephemeral memory.  You could avoid this problem with persistent
+storage.  Another approach to avoiding problems like this is to
+require that any write must be coordinated by multiple nodes.  That
+way a write to a single node will always fail fast and can be retried
+by the client, potentially at a different coordinator.
+
+First, I'll demonstrate a partitioned write to a 2-node sub-cluster,
+fail one of those nodes, and then perform a read after the partition
+has "healed."  Once again, I'll continue from the previous session.
+
+    (rts1@127.0.0.1)12> rts:get("progski", "agents").
+    ...
+    (rts1@127.0.0.1)14> rts:get_dbg_preflist("progski", "agents").
+    ...
+    (rts1@127.0.0.1)15> rts:dbg_op(sadd, 'rts2@127.0.0.1', ['rts3@127.0.0.1'], "progski", "agents", "Foo Agent").
+    ok
+    (rts1@127.0.0.1)16> rts:get_dbg_preflist("progski", "agents").
+    ...
+
+At this point a partitioned write has occurred, adding the user agent
+"Foo Agent" to the `agents` stat.  Now kill either `rts2` or `rts3`
+and then perform a read on one of the remaining nodes.
+
+    ./dev/dev2/bin/rts attach
+    Ctrl^C Ctrl^C
+
+    (rts1@127.0.0.1)17> rts:get_dbg_preflist("progski", "agents").
+    (rts1@127.0.0.1)18> rts:get("progski", "agents").
+    ...
+     "Foo Agent",
+    ...
+
+Now a write to a sub-cluster of one.
+
+    Ctrl^D
+    for d in dev/dev*; do $d/bin/rts start; done
+    ./dev/dev1/bin/rts attach
+    (rts1@127.0.0.1)19> rts:get("progski", "agents").
+    ...
+    (rts1@127.0.0.1)20> rts:get_dbg_preflist("progski", "agents").
+    ...
+    (rts1@127.0.0.1)21> rts:dbg_op(sadd, 'rts1@127.0.0.1', [], "progski", "agents", "Bar Agent").
+    ok
+    (rts1@127.0.0.1)22> rts:get_dbg_preflist("progski", "agents").
+    ...
+    Ctrl^C Ctrl^C
+
+    ./dev/dev2/bin/rts attach
+    rts:get_dbg_preflist("progski", "agents").
+    ...
+    (rts2@127.0.0.1)2> rts:get("progski", "agents").
+    ...
+    (rts2@127.0.0.1)3> rts:get("progski", "agents").
+    ...
+
+Notice that "Bar Agent" has been lost.

@@ -126,6 +126,10 @@ afterward.  That is, if one of the first two nodes returned
     (rts3@127.0.0.1)1> rts:get("progski", "total_reqs").
     {ok,[not_found,19]}
 
+As you can see RTS doesn't do anything in the way of resolving the
+conflicting values.  Besides, even if it did that wouldn't help much
+since it does nothing to repair these conflicts.  The rest of the post
+is about fixing this.
 
 Conflict Resolution
 ----------

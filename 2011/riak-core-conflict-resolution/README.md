@@ -134,16 +134,16 @@ is about fixing this.
 Conflict Resolution
 ----------
 
-In the intro I told you that in a Core system you will generally
-handle inconsistencies in a lazy manner but I didn't tell you how you
-detect conflicts or how to fix them.  That's the topic of this
-section.
+The first step to building an eventually consistent system is
+determining how to detect entropy.  With a conflict in hand you then
+need to have some sort of plan on how to reconcile it.  I will show
+how I implemented these processes in RTS.
 
 ### Vector Clocks ###
 
 Like Riak, I decided to use
-[vector clocks](http://wiki.basho.com/Vector-Clocks.html) in RTS to
-detect conflicting versions of the same object.  I created the
+[vector clocks](http://wiki.basho.com/Vector-Clocks.html) to detect
+conflicting versions of the same object.  I created the
 [rts_obj](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-conflict-resolution/rts/src/rts_obj.erl)
 module to wrap the use of vclocks in a nice, contained package.  If
 you take a peek at
@@ -157,21 +157,22 @@ There are already posts about why vclocks are
 or
 [hard](http://blog.basho.com/2010/04/05/why-vector-clocks-are-hard/)
 depending on your perspective.  In this post I want to focus on the
-fact that vclocks allow you to give a logical ordering to multiple
-versions of the same object.  By assigning a logical timeline to each
-version you can then compare them to determine if a split occurred at
-some point in time.  If a split has occurred then it means there is
-potential that each version has data that the other is missing.
-However, that is dependent on the data your object is storing.  For
-example, in the case of a set where elements are only ever added it
-hardly matters that two parallel version had the same element added
-because that would result in the same set.  Even in the case where
-different elements were added resolving their differences would be a
-simple matter of performing a union of the sets.  This is the case for
-the `agents` stat in RTS.  On the flip side are the counter stats such
-as `total_sent` which keeps track of the total number of bytes sent by
-a webserver.  If there are parallel versions then that means each
-version is missing the byte counts sent by the other versions.
+fact that vector clocks allow you to give a logical ordering to
+multiple versions of the same object.  By assigning a logical timeline
+to each version you can then compare them to determine if a split
+occurred at some point in time.  If a split has occurred then it means
+there is potential that each version has data that the other is
+missing.  However, that is dependent on the data your object is
+storing.  For example, in the case of a set where elements are only
+ever added it hardly matters that two parallel version had the same
+element added because that would result in the same set.  Even in the
+case where different elements were added resolving their differences
+would be a simple matter of performing a union of the sets.  This is
+the case for the `agents` stat in RTS.  On the flip side are the
+counter stats such as `total_sent` which keeps track of the total
+number of bytes sent by a webserver.  If there are parallel versions
+then that means each version is missing the byte counts sent by the
+other versions.
 
 <table>
   <tr>
@@ -230,8 +231,8 @@ version is missing the byte counts sent by the other versions.
 
   <tr>
     <td>1550 [{A,2}, {B,1}, {C,1}]</td>
-    <td>1550 [{A,2}, {B, 1}, {C,1}]</td>
-    <td>1150 [{A,2}, {C,2}]</td>
+    <td>1550 [{A,2}, {B,1}, {C,1}]</td>
+    <td>1150 [{A,2},        {C,2}]</td>
   </tr>
 
   <tr>
@@ -244,8 +245,8 @@ version is missing the byte counts sent by the other versions.
 
   <tr>
     <td>1600 [{A,3}, {B,1}, {C,1}]</td>
-    <td>1600 [{A,3}, {B, 1}, {C,1}]</td>
-    <td>1200 [{A,3}, {C,2}]</td>
+    <td>1600 [{A,3}, {B,1}, {C,1}]</td>
+    <td>1200 [{A,3},        {C,2}]</td>
   </tr>
 
   <tr>
@@ -261,7 +262,7 @@ coordinator.  This indicates that these versions are conflicting and
 must be resolved.
 
 This conflict detection is handled by the `rts_obj`, specifically the
-`merge` function is called by the `rts_get_fsm` (coordinator) to merge
+`merge` function is called by the coordinator (`rts_get_fsm`) to merge
 the vnode replies into one.  Typically, the replies will have a
 sequential, non-parallel ordering and merge will simply return the
 latest object in the logical timeline.  Otherwise, if parallel version
@@ -292,7 +293,7 @@ Think about it and make sure you agree.
         unique(Objs) -- ancestors(Objs).
 
 If you're still not convinced, perhaps looking at the definitions for
-`unique/1` and `ancestors/1` will help?  Note that `not_found` is a
+`unique/1` and `ancestors/1` will help.  Note that `not_found` is a
 special case in that it is considered an ancestor of all values and
 therefore is generally filtered out and ignored by most operations.
 
@@ -325,8 +326,6 @@ therefore is generally filtered out and ignored by most operations.
             end,
         lists:foldl(F, [], Objs).
 
-I hope I've be able to convince you that vector clocks are indeed a
-useful tool for detecting entropy in an eventually consistency system.
 Detecting conflicts is half the battle.  The other half is determining
 how to resolve them.
 
@@ -334,33 +333,32 @@ how to resolve them.
 ### Reconciling Conflicts ###
 
 In order to reconcile conflicts in your system you have to know about
-the type of data you are storing in your system.  For example, in Riak
-the data is an opaque blob which means Riak can't really do much on
-it's own to resolve a conflict because it doesn't understand anything
-about the data it is storing.  By default Riak will implement a _Last
-Write Wins_ (LWW) behavior which will select the latest object version
-based on wall clock time.  If this is unacceptable then the user has
-the option to turning this feature off by setting `allow_mult` to true
-which will allow multiple versions to coexist and upon a read all
-versions will be returned to the caller who can then reconcile these
-versions in their appropriate context.
+the type of data being stored.  For example, in Riak the data is an
+opaque blob which means Riak can't really do much on it's own to
+resolve a conflict because it doesn't understand anything about the
+data.  By default Riak will implement a _Last Write Wins_ (LWW)
+behavior which will select the latest object version based on wall
+clock time.  If this is unacceptable then the user has the option to
+disable this feature by setting `allow_mult` to true which will allow
+multiple versions to coexist and upon a read all versions will be
+returned to the caller.  The caller can then reconcile the versions
+with full context.
 
-However, it's not always just enough to have the differing object
-versions to reconcile an object.  Many times you will need
-supplementary data that puts those versions in context.  Returning to
-the example above, on that final two versions of the object would be
-returned with two values: `1600` and `1200`.  Now, I hope it's clear
-to everyone that you can't just add these two numbers to get the
-reconciled version, because that would be too large a number.
-Likewise, you can't just pick the largest number because that would be
-too small a number.  In order to determine the correct number more
-context is needed than just the values.  One way to do this (but not
+It's not always enough to have **just** the conflicting objects to
+perform reconciliation.  Many times you will need supplementary data
+that puts those versions in context.  In the example above the two
+versions of the object would be returned with values `1600` and
+`1200`.  Now, I hope it's clear to everyone that you can't just add
+these two numbers to get the reconciled version, because that would be
+too large a number.  Likewise, you can't just pick the largest number
+because that would be too small a number.  In order to determine the
+correct number more context is needed.  One way to do this (but not
 the only way, there was a very recent addition to statebox to do the
 same thing) is by a separate count for each coordinator.  In that case
-the total is always the sum of the max of all coordinators.  I think
-this is more clearly demonstrate by returning to the example above but
-instead using the `incr` operation as an example which is really just
-a specific instance of `incrby`.
+the total is always the sum of the max of all coordinators.  I'll
+demonstrate this with an example similar to above but instead using
+the `incr` operation which is really just a specific instance of
+`incrby`.
 
 <table>
   <tr>
@@ -458,8 +456,7 @@ for each coordinator we get the correct result.
 
 Another way to reason about this is that during the split both the
 `AB` and `C` cluster missed a count.  Since both have seen `5` counts
-up to the read adding `1` to either side will arrive at `6`.  Alright,
-this is supposed to be a **working** blog post so how about some code?
+up to the read adding `1` to either side will arrive at `6`.
 
 The excerpt below comes from
 [rts_stat_vnode](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-conflict-resolution/rts/src/rts_stat_vnode.erl)
@@ -472,7 +469,7 @@ the coordinator itself (remember from the last post it is the
 coordinator that interacts with the vnodes).  This is important
 because the vnode, by nature, is probably running on a different node
 from the coordinator and you only want to bump the count of the node
-you saw the operation come in on.
+coordinating the operation.
 
     handle_command({incrby, {ReqID, Coordinator}, StatName, IncrBy}, _Sender, #state{stats=Stats0}=State) ->
         Obj =
@@ -493,13 +490,13 @@ you saw the operation come in on.
         {reply, {ok, ReqID}, State#state{stats=Stats}};
 
 
-The next excerpt is responsible for reconciling divergent versions of
-`#incr` values.  I feel like I could probably clean this up but the
-main thing to take away is that it uses the context data to determine
-the max count for each coordinator and then sums them up to arrive at
-the resolved total.  Make sure to notice that it returns a new `#incr`
-value that has both the new `Total` **and** the max count from each
-coordinator.
+The next excerpt is the code responsible for reconciling divergent
+versions of `#incr` values.  I feel like I could probably clean this
+up but the main thing to take away is that it uses the context data to
+determine the max count for each coordinator and then sums them to
+arrive at the correct total.  Make sure to notice that it returns a
+new `#incr` value that has both the new `Total` **and** the max count
+from each coordinator.
 
     -spec reconcile([A::any()]) -> A::any().
     reconcile([#incr{}|_]=Vals) ->
@@ -513,17 +510,18 @@ coordinator.
         #incr{total=Total, counts=dict:from_list(MaxCounts)};
 
 
-That's all well and good for reconciling counters, but what about other types of data?
+That's all well and good for reconciling counters, but what about
+other types of data?
 
 
 ### Reconciling Conflicts With Statebox ###
 
 In RTS, along with counters, there are also sets.  Currently sets are
-only used to keep track of the various user agents that have hit your
-webserver.  In this case that means RTS is only ever adding data to
-the set and reconciliation can be as simple as a union.  However, the
-second you allow even on delete operation to occur things get murky.
-Once again I'll use an example to demonstrate why.
+only used to keep track of the various user agents that have hit a
+webserver.  This means data is only added to the set and
+reconciliation can be as simple as a union.  However, the second you
+allow a delete operation to occur this won't work.  Once again I'll
+use an example to demonstrate why.
 
 Lets say I add a stat to RTS that tracks user login/logout events and
 keep track of all currently logged-in users via a set.
@@ -591,12 +589,12 @@ the operations that occurred during the network split so that we may
 replay them after it has been healed.  This is exactly what
 [statebox](https://github.com/mochi/statebox) provides you with.
 
-Essentially, statebox provides you with a **window** of events that
-lead up to the current value.  I emphasize window because it's limited
-in scope.  You can't remember every event because then it becomes too
-expensive both in the space to store it and the time to traverse it
-(replay events).  Plus, if your cluster is well connected most of the
-time there is no reason to remember older events that have since been
+Essentially, statebox provides a **window** of events that lead up to
+the current value.  I emphasize window because it's limited in scope.
+You can't remember every event because then it becomes too expensive
+both in the space to store it and the time to traverse it (replay
+events).  Plus, if your cluster is well connected most of the time
+there is no reason to remember older events that have since been
 propagated throughout.  The tricky part is when a partition occurs.
 While statebox saves you a lot of trouble it isn't fool proof.  The
 key is that your statebox window must be larger than the partition
@@ -616,22 +614,18 @@ in can deal with.  Please see this
 more details.
 
 The excerpt below shows how `rts_stat_vnode` uses statebox to keep
-track of `sadd` operations.  The code for `srem` is identical except
-the `add_element` operation is replaced with `del_element`.  First
-off, notice that I bound my window strictly by time.  That is, each
-statebox will track all operations that have occurred within the
-`?STATEBOX_EXPIRE` window.  That means the number of operations
-tracked is unbounded and could potentially run amuck if there was a
-sudden write spike.  This also means that if a partition split lasts
-for longer than `?STATEBOX_EXPIRE` then there is potential to lose
-data.  I say potential because expiration must be performed explicitly
-and is only during during write time (as seen below) so if the network
-was to split but writes only occurred inside the window but the
-network wasn't healed until after no data would be lost because those
-older events haven't been expired yet.  If it hasn't hit you yet the
-uptake is that eventual consistency can be hard to reason about during
-failure scenarios and therefore you must think carefully about your
-data and your systems behavior.
+track of the set operations `sadd` and `srem`.  First off, notice that
+I bound my window strictly by time.  That is, each statebox will track
+all operations that have occurred within the `?STATEBOX_EXPIRE`
+window.  That means the number of operations tracked is unbounded and
+could potentially run amuck if there was a sudden write spike.  This
+also means that if a partition split lasts for longer than
+`?STATEBOX_EXPIRE` then there is potential to lose data.  I say
+potential because expiration must be performed explicitly and is only
+done during write time in RTS, as seen below.  If the network was to
+split but writes only occurred inside the window but the network
+wasn't healed until after no data would be lost because those older
+events haven't been expired yet.
 
     handle_command({sadd, {ReqID, Coordinator}, StatName, Val},
                    _Sender, #state{stats=Stats0}=State) ->
@@ -663,8 +657,8 @@ simply, eh?  Thanks Bob!
 Earlier I mentioned how something like the `agents` stat doesn't
 really need much in the way of reconciliation because it's an
 append-only set.  Even so I find it makes more sense just use statebox
-on all set-data regardless because it makes the code easier to reason
-about.
+on all set-backed data regardless because it makes the code easier to
+reason about.
 
 
 Read Repair

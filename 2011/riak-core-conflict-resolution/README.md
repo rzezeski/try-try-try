@@ -775,3 +775,61 @@ Now a write to a sub-cluster of one.
     ...
 
 Notice that "Bar Agent" has been lost.
+
+
+Hinted Handoff & Conflict Resolution
+----------
+
+Conflict resolution is not limited to just read time.  It's also
+needed during write time if there is a chance that the objects could
+be out of sync.  Think about hinted handoff for a second.  Hinted
+handoff occurs when a fallback vnode realizes the primary vnode is
+online and it's data can be transferred.  However there is a lag
+between the time a fallback vnode recognizes the primary is online and
+when it starts transferring it's data.  During this window writes may
+occur on the primary.  If that is the case then the handoff data
+cannot simply overwrite the local data or else data would be lost
+**locally**.  I emphasize locally because obviously we are talking
+about a redundant system and while it may be lost locally there is a
+good chance the data still exist on another vnode and read repair
+would reconcile it.  However, it's good to avoid local data loss like
+this and avoid relying too heavily on the redundancy.
+
+Notice my use of `rts_obj:merge` in the
+[rts_stat_vnode](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-conflict-resolution/rts/src/rts_stat_vnode.erl)
+`handle_handoff_data` callback.  This is invoked when a fallback node
+sends a piece of data to the primary.
+
+    handle_handoff_data(Data, #state{stats=Stats0}=State) ->
+        {StatName, HObj} = binary_to_term(Data),
+        MObj =
+            case dict:find(StatName, Stats0) of
+                {ok, Obj} -> rts_obj:merge([Obj,HObj]);
+                error -> HObj
+            end,
+        Stats = dict:store(StatName, MObj, Stats0),
+        {reply, ok, State#state{stats=Stats}}.
+
+Since this blog post is already grown much too long I'm going to
+refrain from showing a console session proving this works.  If you'd
+like to try for yourself here are the steps.
+
+1. Take a node down -- this will cause fallback vnodes to be created.
+
+2. Write some data -- this will cause the fallback vnode to be
+populated with parallel/conflicting objects from the other vnodes.
+It's important that you not perform a `rts:get` or else read repair
+will reconcile them.
+
+3. Restart the downed node -- this will cause the primary to come
+online with **no** data.
+
+4. Perform a `rts:get` to invoke read repair.  At this point all
+primaries have the correct data but you have a fallback that has
+conflicting data.  After some time the fallback will realize
+the primary is up and will begin handoff.
+
+4. Wait for handoff messages to appear in the console.  Retry the
+`rts:get` and make sure the data is still correct and **no** further
+read repair was made.  This proves that the data was reconciled
+**prior** to writing it.

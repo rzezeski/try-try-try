@@ -833,3 +833,25 @@ the primary is up and will begin handoff.
 `rts:get` and make sure the data is still correct and **no** further
 read repair was made.  This proves that the data was reconciled
 **prior** to writing it.
+
+
+Next Time
+----------
+
+> I made this [letter] very long, because I did not have the leisure
+> to make it shorter. ~ Blaise Pascal
+
+I apologize for the length and general cumbersome feel of this blog
+post.  It turns out that conflict resolution and the more general
+topic of eventual consistency can be quite hard to nail down in a
+succinct manner.  This is at least the 5th iteration of this blog post
+and I still feel it's wanting in some areas but at some point you have
+to say "enough if enough."  Finally, be very critical of everything I
+say here.  I'm still an infant in distributed computing and the
+purpose of this post is as much to learn as it is to teach.
+
+For my next post I'm thinking of either digging into ways to test
+these systems with tools such as QuickCheck or maybe doing an overview
+of every module in Riak Core describing it's purpose.  If you have an
+opinion, on anything here, please ping me on
+[twitter](http://twitter.com/#!/rzezeski).

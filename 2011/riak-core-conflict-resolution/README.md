@@ -1,8 +1,6 @@
 Riak Core, Conflict Resolution
 ==========
 
-**WARNING: THIS IS ALL SUBJECT TO CHANGE -- STILL A WORK IN PROGRESS -- COME BACK SOON**
-
 In the
 [previous post](https://github.com/rzezeski/try-try-try/tree/master/2011/riak-core-the-coordinator)
 I explained the role of a coordinator and showed how to implement one.

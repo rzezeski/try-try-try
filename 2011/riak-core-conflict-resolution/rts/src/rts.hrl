@@ -7,14 +7,13 @@
 -define(DEFAULT_TIMEOUT, 10000).
 -define(STATEBOX_EXPIRE, 60000).
 
--type val()             :: any().
--type proplist()        :: [proplists:property()].
+-record(incr,           {total  :: pos_integer(),
+                         counts :: dict()}).
+-type incr()            :: #incr{}.
+
+-type val()             :: incr() | statebox:statebox().
 
 -record(rts_obj,        {val    :: val(),
                          vclock :: vclock:vclock()}).
 
--record(incr,           {total  :: pos_integer(),
-                         counts :: dict()}).
-
 -type rts_obj()         :: #rts_obj{} | not_found.
--type reconcile_fun()   :: fun(([rts_obj()]) -> rts_obj()).

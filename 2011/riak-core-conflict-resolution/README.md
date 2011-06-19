@@ -701,11 +701,9 @@ made and then performs them.
 Failure Scenarios
 ----------
 
-Now that I've explained how to 1) detect conflicts, 2) resolve
-conflicts, and 3) repair conflicts I want to discuss various failure
-scenarios and see if I can't show that these three things will lead to
-an eventually consistent system in most circumstances.  I'll try my
-best to go from simple to more convoluted.  I will cover only the
+Now that I've explained how to detect, resolve, and repair conflicts I
+want to discuss various failure scenarios and demonstrate how these
+features come together to provide consistency.  I will cover only the
 scenarios that jump out to me as trying to cover all the different
 variations may lead to madness for both you and me.  I'll also be
 quoting shell sessions with RTS so that you can follow along if you
@@ -720,20 +718,20 @@ like.
     ./dev/dev1/bin/rts-admin ringready
     gunzip -c progski.access.log.gz | head -20 | ./replay --devrel progski
 
-It's probably also worth explaining two debugging functions I'll be
-using to help me test and demonstrate my scenarios.  The first is
+It's probably also worth explaining two functions I'll be using to
+help me test and demonstrate my scenarios.  The first is
 `get_dbg_preflist` which returns a list of `{{Index, Node}, Obj}`.
 That is it shows the mapping of vnodes to their respective values.
 The second function is `dbg_op` which allows me to fake partitioned
 writes.  A partitioned write is one that does not reach all it's
-destination vnodes.  This might happen for various reasons such as
-packet loss, switch/nic failure, etc.
+destination vnodes.
 
 ### Node Goes Down ###
 
 I think the first, most obvious, and probably simplest to reason about
 is the case where a single node crashes.
 
+    ./dev/dev1/bin/rts attach
     (rts1@127.0.0.1)1> rts:get("progski", "GET").
     19
     (rts1@127.0.0.1)2> rts:get_dbg_preflist("progski", "GET").
@@ -741,9 +739,10 @@ is the case where a single node crashes.
     Ctrl^C Ctrl^C
 
 First I check for sanity on `rts1` and then I run `get_dbg_preflist`
-to see the actually objects stored on each vnode.  In this case they
-should be identical.  Then I kill this node and attach to `rts2`.
+to see the objects stored on each vnode.  In this case they should be
+identical.  Then I kill this node and attach to `rts2`.
 
+    ./dev/dev2/bin/rts attach
     (rts2@127.0.0.1)1> rts:get_dbg_preflist("progski", "GET").
     ...
      {{274031556999544297163190906134303066185487351808,
@@ -758,15 +757,16 @@ should be identical.  Then I kill this node and attach to `rts2`.
     (rts2@127.0.0.1)3> rts:get("progski", "GET").
     19
 
-The first thing to do on `rts2` is verify that only two vnodes are
-left that contain this object.  I extracted part of the return value
-to demonstrate this above.  Next, perform a read.  At this point
-`merge` will return one child so no reconciliation is needed (remember
-a `not_found` is ancestor to all), `needs_repair` will return true
-since not all objects are equal, and then a read repair will be
-performed by calling `repair`.  Once again, I quoted an excerpt from
-the shell demonstrating this.  Notice there is no repair after the
-second read because it has already been repaired.
+The first thing to do on `rts2` is to verify, via `get_dbg_preflist`,
+that only two vnodes contain the correct value while the 3rd has the
+value `not_found`.  I extracted part of the return value to
+demonstrate this above.  Next, perform a read.  At this point `merge`
+will return one child so no reconciliation is needed (remember a
+`not_found` is ancestor to all), `needs_repair` will return true since
+not all objects are equal, and then a read repair will be performed by
+calling `repair`.  Once again, I quoted an excerpt from the shell
+demonstrating this.  Notice there is no repair after the second read
+because it has already been repaired.
 
 Let's raise the stakes a bit here by taking a node down and then
 performing a write before a read.  This should cause the replica
@@ -776,16 +776,15 @@ First bring `rts1` back up and perform read repair to get back to the
 initial state.  Then bring it back down :)
 
     for d in dev/dev*; do $d/bin/rts start; done
+    ./dev/dev1/bin/rts attach
     (rts1@127.0.0.1)1> rts:get("progski", "GET").
+    ...
     Ctrl^C Ctrl^C
 
 Now attach to `rts2` and confirm one replica reports `not_found`.
 
     ./dev/dev2/bin/rts attach
     (rts2@127.0.0.1)1> rts:get_dbg_preflist("progski", "GET").
-    ...
-     {{274031556999544297163190906134303066185487351808,
-       'rts2@127.0.0.1'},
     ...
 
 Increment the `GET` stat, confirm conflicting values, and then perform
@@ -828,9 +827,9 @@ What if you fail multiple nodes?
     20
 
 You might be surprised that first read returned `not_found`.  After
-all, even though two replicas reported `not_found` there is a local
-one with the correct value.  However, since the default is `R=2` and
-the `not_found` values happened to return first this is the value
+all, even though two replicas reported `not_found` there is still one
+with the correct value.  However, since the default is `R=2` and the
+`not_found` values happened to return first this is the value
 returned.  In this version of RTS I added an option to pass a
 different value of `R` to `get`.  You could have performed the first
 read like so and it would return the correct value.
@@ -840,23 +839,26 @@ read like so and it would return the correct value.
 
 The key to remember is that multiple node failures, even with writes
 occurring, should be no different from a single failure as long as the
-number of failures is less than `N`.
+number of failures is less than `N`.  Once you lose `N` or more nodes
+you **may** start to lose **some** of your data.  This depends on how
+many nodes you have in the cluster and what the ring partition
+ownership looks like.  Essentially, for data to be lost, it's top `N`
+partitions need to be owned by failed nodes.
 
 ### Partitioned Writes ###
 
 Before I go into partitioned writes I want to say that the closer the
 nodes of your cluster are the rarer of an event this is.  For example,
 you're much more likely to run into this if your nodes are spread
-across data centers as opposed to a rack.  That said, Basho's flagship
-product, Riak, is designed to be deployed locally and if you want WAN
-support you should use replication.  I'm not sure if we do, or should,
-take the same stance on other applications built on Core.  In any
-case, the onus is on you, the developer, to understand your
-application's needs and this is one of the things you should take into
-account.  That is, you should ask yourself the questions "What's the
-likelihood that my cluster could partition?  How often and for how
-long?  Would such an event have a deleterious effect on my business or
-is it not such a big deal?"
+across data centers as opposed to a rack.  Basho's flagship product,
+Riak, is designed to be deployed locally and if you want WAN support
+you should use replication.  I'm not sure if the same stance is taken
+for applications built on Core.  In any case, the onus is on you, the
+developer, to understand your application's needs and this is one of
+the things you should take into account.  That is, you should ask
+yourself questions like "What's the likelihood that my cluster could
+partition?  How often and for how long?  Would such an event have a
+deleterious effect on my business or is it not such a big deal?"
 
 A _partition_, in regards to distributed systems, typically refers to
 when a cluster breaks apart and forms independent sub-clusters.  This
@@ -864,22 +866,22 @@ event is really only dangerous, however, when more than one
 sub-cluster can still be reached by the outside world.  Why?  Because
 if two or more sub-clusters, or partitions, can receive writes for the
 same data but they can't coordinate with each other then you have the
-recipe for parallel versions of the same object.  Independently,
-these sub-clusters are consistent but once joined conflicts ensue and
-must be fixed.  That said, partitions can be more subtle and short
-lived than this.  For example, imagine a write request where 2 writes
-make it to their destination but the 3rd fails for whatever reason.
-This would cause a logical partition in the replica values until that
+recipe for parallel versions of the same object.  Independently, these
+sub-clusters are consistent but once joined conflicts ensue and must
+be fixed.  That said, partitions can be more subtle and short lived
+than this.  For example, imagine a write request where 2 writes make
+it to their destination but the 3rd fails for whatever reason.  This
+would cause a logical partition in the replica values until that
 replica was repaired.  In fact, if you think hard enough you'll
 realize that partitions are **always** occurring in an eventually
 consistent system like Riak because many actions are left to be
-performed asynchronously and in parallel.  In the case where you happen
-to read during a logical partition that's okay because conflict
-resolution will occur and you'll never be the wiser.  There are also
-some tricks that you can perform in these types of systems to garner
-more predicable consistency such as making a best effort to serialize
-all writes to an object on the same coordinator.  You can find some of
-these ideas in Werner Vogel's
+performed asynchronously and in parallel.  In the case where you
+happen to read during a logical partition that's okay because conflict
+resolution will occur.  There are also some tricks that you can
+perform in these types of systems to garner more predictable
+consistency such as making a best effort to serialize all writes to an
+object on the same coordinator.  You can find some of these ideas in
+Werner Vogel's
 [Eventually Consistent - Revisited](http://www.allthingsdistributed.com/2008/12/eventually_consistent.html).
 
 A partition is really no different than a write after a node goes down
@@ -905,10 +907,10 @@ partitioned write on the sub-cluster `(rts2, rts3)`.
 
 In the call to `rts:dbg_op` I'm saying that I want to perform a
 partitioned write to `rts2` and `rts3` that adds `10000` to the
-`total_sent` stat. The 2nd is the coordinator node and the 3rd is the
-other nodes in the pretend sub-cluster.  You should confirm that two
-of the replica's now hold the value `105126`.  Performing a read at
-this point should cause a read repair.
+`total_sent` stat. The 2nd argument is the coordinator node and the
+3rd is the other nodes in the pretend sub-cluster.  You should confirm
+that two of the replica's now hold the value `105126`.  Performing a
+read at this point should cause a read repair.
 
     (rts1@127.0.0.1)7> rts:get("progski", "total_sent").
     105216
@@ -925,12 +927,12 @@ this point should cause a read repair.
 
 As you can see partitions aren't that difficult to reason about.  The
 key is to remember that the values stay consistent relative to the
-nodes that it can communicate with.  If 2 nodes split off to form a
-sub-cluster then any requests to those 2 nodes will be consistent in
-regards to that sub-cluster.  This may be undesirable in certain
-circumstances so Riak recently added the query parameters `PW` and
-`RW` which say that in order for a write or read to succeed it must
-reach a certain number of unique nodes.  For example, given the
+nodes that the coordinator can communicate with.  If 2 nodes split off
+to form a sub-cluster then any requests to those 2 nodes will be
+consistent in regards to that sub-cluster.  This may be undesirable in
+certain circumstances so Riak recently added the query parameters `PW`
+and `RW` which say that in order for a write or read to succeed it
+must reach a certain number of unique nodes.  For example, given the
 sub-cluster of 2 a `PW=3` would fail because only 2 nodes can be
 reached.
 
@@ -963,6 +965,7 @@ has "healed."  Once again, I'll continue from the previous session.
     ok
     (rts1@127.0.0.1)16> rts:get_dbg_preflist("progski", "agents").
     ...
+    Ctrl^D
 
 At this point a partitioned write has occurred, adding the user agent
 "Foo Agent" to the `agents` stat.  Now kill either `rts2` or `rts3`
@@ -971,6 +974,7 @@ and then perform a read on one of the remaining nodes.
     ./dev/dev2/bin/rts attach
     Ctrl^C Ctrl^C
 
+    ./dev/dev1/bin/rts attach
     (rts1@127.0.0.1)17> rts:get_dbg_preflist("progski", "agents").
     (rts1@127.0.0.1)18> rts:get("progski", "agents").
     ...

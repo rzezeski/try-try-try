@@ -1019,11 +1019,11 @@ between the time a fallback vnode recognizes the primary is online and
 when it starts transferring it's data.  During this window writes may
 occur on the primary.  If that is the case then the handoff data
 cannot simply overwrite the local data or else data would be lost
-**locally**.  I emphasize locally because obviously we are talking
-about a redundant system and while it may be lost locally there is a
+**locally**.  I emphasize locally because we are talking about a
+redundant system and while the data may be lost locally there is a
 good chance the data still exist on another vnode and read repair
 would reconcile it.  However, it's good to avoid local data loss like
-this and avoid relying too heavily on the redundancy.
+this and avoid relying too heavily on redundancy.
 
 Notice my use of `rts_obj:merge` in the
 [rts_stat_vnode](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-conflict-resolution/rts/src/rts_stat_vnode.erl)
@@ -1047,9 +1047,9 @@ like to try for yourself here are the steps.
 1. Take a node down -- this will cause fallback vnodes to be created.
 
 2. Write some data -- this will cause the fallback vnode to be
-populated with parallel/conflicting objects from the other vnodes.
-It's important that you not perform a `rts:get` or else read repair
-will reconcile them.
+populated with parallel/conflicting objects relative to the other
+vnodes.  It's important that you not perform a `rts:get` or else read
+repair will reconcile them.
 
 3. Restart the downed node -- this will cause the primary to come
 online with **no** data.

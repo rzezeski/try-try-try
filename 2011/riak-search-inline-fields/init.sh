@@ -1,14 +1,14 @@
 #!/bin/bash
 #
 #> Usage:
-#>    init RIAK_PATH [HTTP_PORT]
+#>    init RIAK_PATH [PBC_PORT]
 
 set -e
 
 if [ ! -e earthquake ]
 then
     echo "The tweet corpus must first be downloaded and extracted."
-    echo "See http://www.infochimps.com/datasets/twitter-haiti-earthquake-data/downloads/53450"
+    echo "See http://www.infochimps.com/datasets/twitter-haiti-earthquake-data"
     exit 1
 fi
 
@@ -19,7 +19,7 @@ then
 fi
 
 RIAK=$1
-PORT=${2:-8098}
+PORT=${2:-8087}
 i=0
 
 echo "Install tweets schema..."
@@ -29,4 +29,4 @@ echo "Install Search precommit hook..."
 $RIAK/bin/search-cmd install tweets
 
 printf "Upload data"
-python upload.py 8091 < earthquake
+python upload.py $PORT < earthquake

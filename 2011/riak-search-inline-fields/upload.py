@@ -11,13 +11,13 @@ import datetime
 def main():
     if len(sys.argv) == 1:
         inf = sys.stdin
-        port = 8098
+        port = 8087
     else:
         inf = sys.stdin
-        port = sys.argv[1]
+        port = int(sys.argv[1])
 
     i = 0
-    c = riak.RiakClient(port=int(port), transport_class=riak.RiakHttpTransport)
+    c = riak.RiakClient(port=port, transport_class=riak.RiakPbcTransport)
     b = c.bucket('tweets')
 
     for line in inf:

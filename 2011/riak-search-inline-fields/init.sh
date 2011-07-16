@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 #> Usage:
-#>    init RIAK_PATH [PBC_PORT]
+#>    init RIAK_PATH SCHEMA [PBC_PORT]
 
 set -e
 
@@ -12,18 +12,19 @@ then
     exit 1
 fi
 
-if [ $# -lt 1 ]
+if [ $# -lt 2 ]
 then
     grep '#>' $0 | tr -d '#>' | sed '$d'
     exit 1
 fi
 
 RIAK=$1
-PORT=${2:-8087}
+SCHEMA=$2
+PORT=${3:-8087}
 i=0
 
-echo "Install tweets schema..."
-$RIAK/bin/search-cmd set-schema tweets tweets-schema.txt
+echo "Install schema $SCHEMA..."
+$RIAK/bin/search-cmd set-schema tweets $SCHEMA
 
 echo "Install Search precommit hook..."
 $RIAK/bin/search-cmd install tweets

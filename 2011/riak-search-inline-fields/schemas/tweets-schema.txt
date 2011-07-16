@@ -1,0 +1,35 @@
+%% Schema for tweets
+{
+  schema, 
+  [
+   {version, "1.1"},
+   {n_val, 2},
+   {default_field, "value"},
+   {analyzer_factory, {erlang, text_analyzers, standard_analyzer_factory}}
+  ],
+  [
+   %% Person who tweeted
+   {field, [
+            {aliases, ["who"]},
+            {name, "user_screen_name"}
+           ]},
+
+   %% What they tweeted
+   {field, [
+            {aliases, ["what"]},
+            {name, "text"}
+           ]},
+
+   %% When they tweeted
+   {field, [
+            {aliases, ["when"]},
+            {name, "created_at"}
+           ]},
+
+   {dynamic_field, [
+                    {name, "*"},
+                    {skip, true}
+                   ]}
+  ]
+}.
+

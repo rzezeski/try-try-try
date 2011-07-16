@@ -1,9 +1,12 @@
 BB ?= /Users/rzezeski/work/basho_bench
 RIAK_PATH ?= /Users/rzezeski/work/riak/dev/dev1
 PBC_PORT ?= 8081
+SCHEMA ?= schemas/tweets-schema.txt
+
+.PHONY: init results run run-non-inline run_bench
 
 init:
-	./init.sh $(RIAK_PATH) $(PBC_PORT)
+	./init.sh $(RIAK_PATH) $(SCHEMA) $(PBC_PORT)
 
 # First prime system by running naive, then measure.
 run:
@@ -17,6 +20,15 @@ run:
 
 	$(BB)/basho_bench scoped-filter.config
 	cp -r tests/current tests/scoped-filter
+
+run-non-inline:
+	$(BB)/basho_bench naive.config
+
+	$(BB)/basho_bench naive.config
+	cp -r tests/current tests/naive
+
+	$(BB)/basho_bench scoped.config
+	cp -r tests/current tests/scoped
 
 run_bench:
 	$(BB)/basho_bench $(CONFIG)

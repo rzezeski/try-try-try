@@ -268,8 +268,8 @@ You'll need the Python [client] [pc] to load the data.
 
 You'll need [basho bench] [bb] to run the benchmarks.
 
-Finally, you'll need a local copy of the Riak Search code because it
-contains the bench driver needed to run the benchmarks.
+Finally, you'll need a local copy of the Riak Search [code] [rsc]
+because it contains the bench driver needed to run the benchmarks.
 
 Then you should edit the Makefile and .config files to correspond to
 your environment.
@@ -319,6 +319,9 @@ create PNG images for each run.
     make results
 
 
+Endnotes
+----------
+
 1: If you'd like to know more you could start by reading Distributed
 Query Processing Using Partitioned Inverted Files.
 
@@ -348,6 +351,8 @@ numbers don't mean shit.
 10: BTW, in this case "document" is a Riak object indexed by the
 Search precommit hook.
 
+
+
 [rs]: http://wiki.basho.com/Riak-Search---Schema.html#Fields-and-Field-Level-Properties
 
 [corpus]: http://www.infochimps.com/datasets/twitter-haiti-earthquake-data
@@ -355,3 +360,6 @@ Search precommit hook.
 [pc]: https://github.com/basho/riak-python-client
 
 [bb]: http://wiki.basho.com/Benchmarking-with-Basho-Bench.html
+
+[rsc]: https://github.com/basho/riak_search
+

@@ -2,7 +2,7 @@ Riak Search, Inline Fields
 ==========
 
 In this post I want to give a quick overview of _inline fields_; a
-recent addition to Riak Search [1] that allows you to tradeoff disk
+recent addition to Riak Search [^1] that allows you to tradeoff disk
 space for a considerable performance bump in query execution and
 throughput.  I'm going to assume the reader is already familair with
 Search.  In the future I may do a Search overview.  If you would like
@@ -317,7 +317,7 @@ create PNG images for each run.
 
     make results
 
-[1]: http://wiki.basho.com/Riak-Search---Schema.html#Fields-and-Field-Level-Properties
+[^1]: http://wiki.basho.com/Riak-Search---Schema.html#Fields-and-Field-Level-Properties
 
 [2]: If you'd like to know more you could start by reading Distributed
 Query Processing Using Partitioned Inverted Files.

@@ -2,9 +2,9 @@ Riak Search, Inline Fields
 ==========
 
 In this post I want to give a quick overview of _inline fields_; a
-recent addition to [Riak Search] [rs] that allows you to tradeoff disk
+recent addition to [Riak Search] [rs] that allows you to trade-off disk
 space for a considerable performance bump in query execution and
-throughput.  I'm going to assume the reader is already familair with
+throughput.  I'm going to assume the reader is already familiar with
 Search.  In the future I may do a Search overview.  If you would like
 that then ping me on [twitter](http://twitter.com/#!/rzezeski).
 
@@ -23,9 +23,9 @@ uses a _global index_, or in other words partitions the index by term.
 This effectively means that all results for a particular term are
 pulled sequentially from **one** node.  This is opposed to a _local
 index_, or partitioning by document, which effectively allows you to
-parallelize the query across all nodes.  There are tradeoffs for
+parallelize the query across all nodes.  There are trade-offs for
 either method and I don't want to discuss that in this blog post.
-However, it's good to keep in mind <sup>1<sup>.  My goal with this
+However, it's good to keep in mind <sup>1</sup>.  My goal with this
 post is to show how you can improve the performance of this type of
 query with the current version of Search <sup>2</sup>.
 
@@ -41,12 +41,12 @@ you in which documents it occurs and it's "weight" in relation to that
 document, e.g. how many times it occurs.  Search adds a little twist
 to this data structure by allowing an arbitrary list of properties to
 be tacked on to each of these pairs.  For example, Search tracks the
-position of each occurance of a term in a document.
+position of each occurrence of a term in a document.
 
 Inline fields allow you to take advantage <sup>5</sup> of this fact
 and store the terms of a field directly in the inverted index entries
 <sup>6</sup>.  Going back to my hypothetical query you could mark the
-field with the frequently occuring term as `inline` and change the
+field with the frequently occurring term as `inline` and change the
 `AND` query to a query and a _filter_.  A filter is simply an extra
 argument to the Search API that uses the same syntax as a regular
 query but makes use of the inline field.  This has the potential to
@@ -64,19 +64,18 @@ _posting_ <sup>7</sup> altogether.
 The Corpus
 ----------
 
-I'll be using a set of ~63K [tweets] [corpus] that occured in reaction
-to the the devestating earthquake that took place in Haiti during
-January of 2010.  The reason I choose this dataset is because it's
-guarenteed to have frequently occuring terms such as "earhquake" but
-also has low occuring terms <sup>7</sup> such as the time the tweets
+I'll be using a set of ~63K [tweets] [corpus] that occurred in reaction
+to the the devastating earthquake that took place in Haiti during
+January of 2010.  The reason I choose this data-set is because it's
+guaranteed to have frequently occurring terms such as "earthquake" but
+also has low occurring terms <sup>7</sup> such as the time the tweets
 were created.
 
 
 The Rig
 ----------
 
-I have performed a crude benchmark of three different queries.  All
-benchmarks were run on a 2GHz i7 MBP with an SSD <sup>8</sup>.  An
+All benchmarks were run on a 2GHz i7 MBP with an SSD <sup>8</sup>.  An
 initial run is performed to prime all systems.  Essentially,
 everything should be coming from FS cache meaning I'll mostly be
 testing processing time.  My guess is disk I/O would only amplify the
@@ -114,7 +113,7 @@ Scoped Query With Filtering
     "created_at:[20100113T032200 TO 20100113T032500]" "text:earthquake"
 
 This is the same as the scoped query except `earthquake` is now a
-filter, not a query.  Notice, unline the previous two queries, there
+filter, not a query.  Notice, unlike the previous two queries, there
 are two strings.  The first is the query the second is the filter.
 You could read that in English as:
 
@@ -240,7 +239,7 @@ be useful as well but I leave it as an exercise to the reader.
 In conclusion I've done a drive-by benchmark showing that there are
 potentially great gains to be had by making use of inline fields.  I
 say "potentially" because inline fields are not free and you should
-take the time to understand your dataset and analyze what tradeoffs
+take the time to understand your data-set and analyze what trade-offs
 you might be making by using this feature.  In my example I'm inlining
 the text field of a twitter stream so it would be useful to gather
 some statistics such as what are the average number of terms per tweet
@@ -249,7 +248,8 @@ then might determine how many tweets you plan to store, how many
 results a typical query will match and how much extra I/O overhead
 that inline field is going to add.  Finally, run your own benchmarks
 on your own hardware with real data while profiling your system's I/O,
-CPU, and mem usage.  Doing anything else is just pissing in the wind.
+CPU, and memory usage.  Doing anything else is just pissing in the
+wind.
 
 
 Run The Benchmark Yourself
@@ -332,7 +332,7 @@ against master.
 Schemes on Performance of Query Processing in Parallel Text Retrieval
 Systems_.
 
-4: In search parlence a word is called a _term_ and the entire list of
+4: In search parlance a word is called a _term_ and the entire list of
 terms is called the _vocabulary_.
 
 5: Or abuse, depending on your disposition.

@@ -83,6 +83,9 @@ results.  I'll be using Basho Bench and running it on the same machine
 as my cluster.  My cluster consists of a four Riak nodes (obviously,
 on the same machine) which I built from master <sup>9</sup>.
 
+If you'd like to run the benchmarks on your own hardware please see
+the [RUN_BENCHMARKS.md](RUN_BENCHMARKS.md) file.
+
 
 Naive Query
 ----------
@@ -251,8 +254,6 @@ on your own hardware with real data while profiling your system's I/O,
 CPU, and memory usage.  Doing anything else is just pissing in the
 wind.
 
-If you'd like to run the benchmarks youself please see the
-RUN_BENCHMARKS.md file.
 
 Endnotes
 ----------

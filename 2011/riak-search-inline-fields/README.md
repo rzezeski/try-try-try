@@ -92,7 +92,7 @@ Naive Query
 The naive query asks for every document id [12] that includes the word
 `earthquake`.  This should return `62805` results every time.
 
-![Naive](riak-search-inline-fields/results/run-with-inline/naive.png)
+![Naive](https://github.com/rzezeski/try-try-try/raw/riak-search-inline-fields/2011/riak-search-inline-fields/results/run-with-inline/naive.png)
 
 
 Scoped Query
@@ -104,7 +104,7 @@ The scoped query still searches for all documents with the term
 `earthquake` but restricts this set further to only those that were
 created in the provided three minute time span.
 
-![Scoped](riak-search-inline-fields/results/run-with-inline/scoped.png)
+![Scoped](https://github.com/rzezeski/try-try-try/raw/riak-search-inline-fields/2011/riak-search-inline-fields/results/run-with-inline/scoped.png)
 
 
 Scoped Query With Filtering
@@ -121,7 +121,7 @@ You could read that in English as:
 > range.  Then filter that set using the inline field "text" where it
 > contains the term "earthquake."
 
-![Scoped & Filter](riak-search-inline-fields/results/run-with-inline/scoped-filter.png)
+![Scoped & Filter](https://github.com/rzezeski/try-try-try/raw/riak-search-inline-fields/2011/riak-search-inline-fields/results/run-with-inline/scoped-filter.png)
 
 
 Conclusions

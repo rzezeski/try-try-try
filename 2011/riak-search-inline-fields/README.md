@@ -149,6 +149,107 @@ adjusted my scripts and did just that.
 Conclusions
 ----------
 
+In this first table I summarize the absolute values for throughput,
+99.9th percentile and average latencies.
+
+<table>
+  <tr>
+    <th>Stat</th>
+    <th>Naive (I)</th>
+    <th>Naive</th>
+    <th>Scoped (I)</th>
+    <th>Scoped</th>
+    <th>Scoped Filter</th>
+  </tr>
+
+  <tr>
+    <td>Thru (op/s)</td>
+    <td>2.5</td>
+    <td>3.5</td>
+    <td>3</td>
+    <td>5</td>
+    <td>15</td>
+  </tr>
+  
+  <tr>
+    <td>99.9% (ms)</td>
+    <td>875</td>
+    <td>490</td>
+    <td>575</td>
+    <td>350</td>
+    <td>42</td>
+  </tr>
+  
+  <tr>
+    <td>Avg (ms)</td>
+    <td>800</td>
+    <td>440</td>
+    <td>530</td>
+    <td>310</td>
+    <td>25</td>
+  </tr>
+</table>
+
+In this benchmark I don't care so much about the absolute numbers as I
+do how they relate to each other.  In the following table I show the
+performance increase of using the scoped filter query versus the other
+queries.  For example, the scoped filter query has three times the
+throughput and returns in 1/12th of the time, on average, as compared
+to the scoped query.  That is, even it's closest competitor has a
+latency profile that is an order of magnitude worse.  You may find it
+odd that I included the naive queries in this comparison but I wanted
+to show just how great the difference can be when you don't limit your
+result set.  Making a similar table comparing naive vs. scoped might
+be useful as well but I leave it as an exercise to the reader.
+
+<table>
+  <tr>
+    <th>Stat</th>
+    <th>Naive (I)</th>
+    <th>Naive</th>
+    <th>Scoped (I)</th>
+    <th>Scoped</th>
+  </tr>
+  
+  <tr>
+    <td>Thru</td>
+    <td>6x</td>
+    <td>4x</td>
+    <td>5x</td>
+    <td>3x</td>
+  </tr>
+
+  <tr>
+    <td>99.9%</td>
+    <td>20x</td>
+    <td>11x</td>
+    <td>13x</td>
+    <td>8x</td>
+  </tr>
+
+  <tr>
+    <td>Avg</td>
+    <td>32x</td>
+    <td>17x</td>
+    <td>21x</td>
+    <td>12x</td>
+  </tr>
+</table>
+
+In conclusion I've done a drive-by benchmark showing that there are
+potentially great gains to be had by making use of inline fields.  I
+say "potentially" because inline fields are not free and you should
+take the time to understand your dataset and analyze what tradeoffs
+you might be making by using this feature.  In my example I'm inlining
+the text field of a twitter stream so it would be useful to gather
+some statistics such as what are the average number of terms per tweet
+and what is the average size of each term?  Armed with that info you
+then might determine how many tweets you plan to store, how many
+results a typical query will match and how much extra I/O overhead
+that inline field is going to add.  Finally, run your own benchmarks
+on your own hardware with real data while profiling your system's I/O,
+CPU, and mem usage.  Doing anything else is just pissing in the wind.
+
 
 Run The Benchmark Yourself
 ----------
@@ -215,10 +316,6 @@ If you want to see pretty graphs run the following command.  It should
 create PNG images for each run.
 
     make results
-
-
-TODO: To be fair I should benchmark query 1 & 2 with the inline field
-turned off to avoid overhead of all that extra data.
 
 [1]: http://wiki.basho.com/Riak-Search---Schema.html#Fields-and-Field-Level-Properties
 

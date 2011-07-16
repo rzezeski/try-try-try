@@ -143,7 +143,7 @@ adjusted my scripts and did just that.
 
 ### Scoped With No Inlining ###
 
-![Scoped No Inline](https://github.com/rzezeski/try-try-try/raw/riak-search-inline-fields/2011/riak-search-inline-fields/results/scoped-non-inline.png)
+![Scoped No Inline](https://github.com/rzezeski/try-try-try/raw/riak-search-inline-fields/2011/riak-search-inline-fields/results/scoped-non-inline.jpg)
 
 
 Conclusions

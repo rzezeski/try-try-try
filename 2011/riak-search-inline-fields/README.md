@@ -2,7 +2,7 @@ Riak Search, Inline Fields
 ==========
 
 In this post I want to give a quick overview of _inline fields_; a
-recent addition to Riak Search [^1] that allows you to tradeoff disk
+recent addition to [Riak Search] [rs] that allows you to tradeoff disk
 space for a considerable performance bump in query execution and
 throughput.  I'm going to assume the reader is already familair with
 Search.  In the future I may do a Search overview.  If you would like
@@ -25,33 +25,33 @@ pulled sequentially from **one** node.  This is opposed to a _local
 index_, or partitioning by document, which effectively allows you to
 parallelize the query across all nodes.  There are tradeoffs for
 either method and I don't want to discuss that in this blog post.
-However, it's good to keep in mind [2].  My goal with this post is to
-show how you can improve the performance of this type of query with
-the current version of Search [3].
+However, it's good to keep in mind <sup>1<sup>.  My goal with this
+post is to show how you can improve the performance of this type of
+query with the current version of Search <sup>2</sup>.
 
 
 What's an "Inline" Field, Anyways?
 ----------
 
 To properly understand inline fields you need to understand the
-_inverted index_ data structure [4].  As a quick refresher the gist is
-that the index is a map from words to a list of document
-reference/weight pairs.  For each word [5] the index tells you in
-which documents it occurs and it's "weight" in relation to that
+_inverted index_ data structure <sup>3</sup>.  As a quick refresher
+the gist is that the index is a map from words to a list of document
+reference/weight pairs.  For each word <sup>4</sup> the index tells
+you in which documents it occurs and it's "weight" in relation to that
 document, e.g. how many times it occurs.  Search adds a little twist
 to this data structure by allowing an arbitrary list of properties to
 be tacked on to each of these pairs.  For example, Search tracks the
 position of each occurance of a term in a document.
 
-Inline fields allow you to take advantage [6] of this fact and store
-the terms of a field directly in the inverted index entries [7].
-Going back to my hypothetical query you could mark the field with the
-frequently occuring term as `inline` and change the `AND` query to a
-query and a _filter_.  A filter is simply an extra argument to the
-Search API that uses the same syntax as a regular query but makes use
-of the inline field.  This has the potential to drop your latency
-dramatically as you avoid pulling all the massive _posting_ [7]
-altogether.
+Inline fields allow you to take advantage <sup>5</sup> of this fact
+and store the terms of a field directly in the inverted index entries
+<sup>6</sup>.  Going back to my hypothetical query you could mark the
+field with the frequently occuring term as `inline` and change the
+`AND` query to a query and a _filter_.  A filter is simply an extra
+argument to the Search API that uses the same syntax as a regular
+query but makes use of the inline field.  This has the potential to
+drop your latency dramatically as you avoid pulling all the massive
+_posting_ <sup>7</sup> altogether.
 
 **WARNING: Inline fields are not free!  Think carefully about what I
  just described and you'll realize that this list of inline terms will
@@ -64,24 +64,25 @@ altogether.
 The Corpus
 ----------
 
-I'll be using a set of ~63K tweets [8] that occured in reaction to the
-the devestating earthquake that took place in Haiti during January of
-2010.  The reason I choose this dataset is because it's guarenteed to
-have frequently occuring terms such as "earhquake" but also has low
-occuring terms [9] such as the time the tweets were created.
+I'll be using a set of ~63K [tweets] [corpus] that occured in reaction
+to the the devestating earthquake that took place in Haiti during
+January of 2010.  The reason I choose this dataset is because it's
+guarenteed to have frequently occuring terms such as "earhquake" but
+also has low occuring terms <sup>7</sup> such as the time the tweets
+were created.
 
 
 The Rig
 ----------
 
 I have performed a crude benchmark of three different queries.  All
-benchmarks were run on a 2GHz i7 MBP with an SSD [10].  An initial run
-is performed to prime all systems.  Essentially, everything should be
-coming from FS cache meaning I'll mostly be testing processing time.
-My guess is disk I/O would only amplify the results.  I'll be using
-Basho Bench and running it on the same machine as my cluster.  My
-cluster consists of a four Riak nodes (obviously, on the same machine)
-which I built from master [11].
+benchmarks were run on a 2GHz i7 MBP with an SSD <sup>8</sup>.  An
+initial run is performed to prime all systems.  Essentially,
+everything should be coming from FS cache meaning I'll mostly be
+testing processing time.  My guess is disk I/O would only amplify the
+results.  I'll be using Basho Bench and running it on the same machine
+as my cluster.  My cluster consists of a four Riak nodes (obviously,
+on the same machine) which I built from master <sup>9</sup>.
 
 
 Naive Query
@@ -89,8 +90,8 @@ Naive Query
 
     "text:earthquake"
 
-The naive query asks for every document id [12] that includes the word
-`earthquake`.  This should return `62805` results every time.
+The naive query asks for every document id <sup>10</sup> that includes
+the word `earthquake`.  This should return `62805` results every time.
 
 ![Naive](https://github.com/rzezeski/try-try-try/raw/riak-search-inline-fields/2011/riak-search-inline-fields/results/naive.png)
 
@@ -263,9 +264,9 @@ Since I already assumed familiarity with Search I'm going to assume
 you already have it installed or you know how to build a devrel from
 scratch.  Remember, Search is integrated with Riak now.
 
-You'll need the Python client to load the data [13].
+You'll need the Python [client] [pc] to load the data.
 
-You'll need basho bench [14].
+You'll need [basho bench] [bb] to run the benchmarks.
 
 Finally, you'll need a local copy of the Riak Search code because it
 contains the bench driver needed to run the benchmarks.
@@ -317,38 +318,40 @@ create PNG images for each run.
 
     make results
 
-[^1]: http://wiki.basho.com/Riak-Search---Schema.html#Fields-and-Field-Level-Properties
 
-[2]: If you'd like to know more you could start by reading Distributed
+1: If you'd like to know more you could start by reading Distributed
 Query Processing Using Partitioned Inverted Files.
 
-[3]: Inline fields were added in 14.2, but my benchmarks were run
+2: Inline fields were added in 14.2, but my benchmarks were run
 against master.
 
-[4]: I like the introduction in Effect of Inverted Index Partitioning
+3: I like the introduction in _Effect of Inverted Index Partitioning
 Schemes on Performance of Query Processing in Parallel Text Retrieval
-Systems.
+Systems_.
 
-[5]: In search parlence a word is called a _term_ and the entire list
-of terms is called the _vocabulary_.
+4: In search parlence a word is called a _term_ and the entire list of
+terms is called the _vocabulary_.
 
-[6]: Or abuse, depending on your disposition.
+5: Or abuse, depending on your disposition.
 
-[7]: Entries in an inverted index are also called _postings_ by some people.  I know, enough with the fucking terminology already.  Shesh!
+6: Entries in an inverted index are also called _postings_ by some
+people.  I know, enough with the fucking terminology already.  Shesh!
 
-[8]: http://www.infochimps.com/datasets/twitter-haiti-earthquake-data
+7: Or high cardinality, depending on how you want to look at it.
 
-[9]: Or high cardinality, depending on how you want to look at it.
+8: Just like when dynoing a car it's constant conditions and relative
+improvement that matter.  Once you're outta the shop those absolute
+numbers don't mean shit.
 
-[10]: Just like when dynoing a car it's constant conditions and
-relative improvement that matter.  Once you're outta the shop those
-absolute numbers don't mean shit.
+9: The exact commit is `3cd22741bed9b198dc52e4ddda43579266a85017`.
 
-[11]: The exact commit is `3cd22741bed9b198dc52e4ddda43579266a85017`.
-
-[12]: BTW, in this case "document" is a Riak object indexed by the
+10: BTW, in this case "document" is a Riak object indexed by the
 Search precommit hook.
 
-[13]: https://github.com/basho/riak-python-client
+[rs]: http://wiki.basho.com/Riak-Search---Schema.html#Fields-and-Field-Level-Properties
 
-[14]: http://wiki.basho.com/Benchmarking-with-Basho-Bench.html
+[corpus]: http://www.infochimps.com/datasets/twitter-haiti-earthquake-data
+
+[pc]: https://github.com/basho/riak-python-client
+
+[bb]: http://wiki.basho.com/Benchmarking-with-Basho-Bench.html

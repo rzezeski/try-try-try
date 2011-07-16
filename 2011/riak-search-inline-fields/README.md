@@ -84,7 +84,8 @@ as my cluster.  My cluster consists of a four Riak nodes (obviously,
 on the same machine) which I built from master <sup>9</sup>.
 
 If you'd like to run the benchmarks on your own hardware please see
-the [RUN_BENCHMARKS.md](RUN_BENCHMARKS.md) file.
+the [RUN_BENCHMARKS.md](riak-search-inline-fields/RUN_BENCHMARKS.md)
+file.
 
 
 Naive Query

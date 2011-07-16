@@ -92,7 +92,7 @@ Naive Query
 The naive query asks for every document id [12] that includes the word
 `earthquake`.  This should return `62805` results every time.
 
-![Naive](https://github.com/rzezeski/try-try-try/raw/riak-search-inline-fields/2011/riak-search-inline-fields/results/run-with-inline/naive.png)
+![Naive](https://github.com/rzezeski/try-try-try/raw/riak-search-inline-fields/2011/riak-search-inline-fields/results/naive.png)
 
 
 Scoped Query
@@ -104,7 +104,7 @@ The scoped query still searches for all documents with the term
 `earthquake` but restricts this set further to only those that were
 created in the provided three minute time span.
 
-![Scoped](https://github.com/rzezeski/try-try-try/raw/riak-search-inline-fields/2011/riak-search-inline-fields/results/run-with-inline/scoped.png)
+![Scoped](https://github.com/rzezeski/try-try-try/raw/riak-search-inline-fields/2011/riak-search-inline-fields/results/scoped.png)
 
 
 Scoped Query With Filtering
@@ -121,7 +121,29 @@ You could read that in English as:
 > range.  Then filter that set using the inline field "text" where it
 > contains the term "earthquake."
 
-![Scoped & Filter](https://github.com/rzezeski/try-try-try/raw/riak-search-inline-fields/2011/riak-search-inline-fields/results/run-with-inline/scoped-filter.png)
+![Scoped & Filter](https://github.com/rzezeski/try-try-try/raw/riak-search-inline-fields/2011/riak-search-inline-fields/results/scoped-filter.png)
+
+
+Wait One Second!
+----------
+
+Just before I was about to consider this post wrapped up I realized my
+comparison of inline vs. non-inline wasn't quite fair.  As currently
+implemented, when returning postings the inline field's value is
+included.  I'm not sure if this is of any practical use outside the
+filtering mechanism but this means that in the case of the naive and
+scoped queries the cluster is taking an additional disk and network
+hit by carrying all that extra baggage.  A more fair comparison would
+be to run the naive and scoped queries with no inline fields.  I
+adjusted my scripts and did just that.
+
+### Naive With No Inlining ###
+
+![Naive No Inline](https://github.com/rzezeski/try-try-try/raw/riak-search-inline-fields/2011/riak-search-inline-fields/results/naive-non-inline.jpg)
+
+### Scoped With No Inlining ###
+
+![Scoped No Inline](https://github.com/rzezeski/try-try-try/raw/riak-search-inline-fields/2011/riak-search-inline-fields/results/scoped-non-inline.png)
 
 
 Conclusions

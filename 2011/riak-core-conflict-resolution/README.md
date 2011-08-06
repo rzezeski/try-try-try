@@ -42,7 +42,7 @@ This up-front consistency doesn't come free.  It requires coordination
 in order to enforce ACID.  In the case of a single-node deployment
 this could mean rising latency on a highly contended piece of data.
 In the case of a multi-node deployment we are talking about not only
-rising latencies but also the lose of availability if one of the nodes
+rising latencies but also the loss of availability if one of the nodes
 goes down or a network partition occurs.  After all, how can you
 enforce consistency across all nodes if all nodes cannot talk to each
 other?

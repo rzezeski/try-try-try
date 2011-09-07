@@ -20,15 +20,12 @@ TLDR, Start Here
 Enough of me attempting to be witty (is it possible to be witty in written form?).  The first thing you need to do is grab the templates and drop them in `~/.rebar/templates`.
 
     git clone git://github.com/rzezeski/rebar_riak_core.git
-    cd rebar_riak_core
-    git checkout multinode
-    mkdir ~/.rebar/templates
-    cp * ~/.rebar/templates
+    mkdir -p ~/.rebar/templates
+    cp rebar_riak_core/* ~/.rebar/templates
     ls ~/.rebar/templates
 
-Without executing the above steps rebar won't be able to find the _riak\_core\_multinode_ template (can I configure rebar to look in other dirs for templates?).  If you don't have rebar don't worry, we'll get to that.  Next, make a directly to house your new multinode capable Riak Core application.
+Without executing the above steps rebar won't be able to find the _riak\_core\_multinode_ template (can I configure rebar to look in other dirs for templates?).  If you don't have rebar don't worry, we'll get to that.  Next, make a directory to house your new multinode capable Riak Core application.
 
-    cd ..
     mkdir mfmn
     cd mfmn
 
@@ -90,7 +87,7 @@ There's no output so let's make sure they are indeed up.
 
     for d in dev/dev*; do $d/bin/mfmn ping; done
 
-You should see three `pong` replies.  Now, at this point, it is worth saying that you have three **INDIVIDUAL** mfmn nodes running.  They are _not_ aware of each other yet and if this were a Riak KV cluster you could store data in one node and the other node will have no idea it's there.  In order to form the cluster you have to _join_ the nodes.  Don't worry, you only have to join them once.  If a node, or the entire cluster, goes down it will remember the other nodes it's joined to.
+You should see three `pong` replies.  Now, at this point, it is worth saying that you have three **INDIVIDUAL** mfmn nodes running.  They are **NOT** aware of each other yet and if this were a Riak KV cluster you could store data in one node and the other node will have no idea it's there.  In order to form the cluster you have to _join_ the nodes.  Don't worry, you only have to join them once.  If a node, or the entire cluster, goes down it will remember the other nodes it's joined to.
 
     for d in dev/dev{2,3}; do $d/bin/mfmn-admin join mfmn1@127.0.0.1; done
 

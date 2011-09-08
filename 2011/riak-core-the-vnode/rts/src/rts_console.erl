@@ -27,10 +27,31 @@ join([NodeStr]) ->
             error
     end.
 
-
 leave([]) ->
-    remove_node(node()).
-
+    try
+        case riak_core:leave() of
+            ok ->
+                io:format("Success: ~p will shutdown after handing off "
+                          "its data~n", [node()]),
+                ok;
+            {error, already_leaving} ->
+                io:format("~p is already in the process of leaving the "
+                          "cluster.~n", [node()]),
+                ok;
+            {error, not_member} ->
+                io:format("Failed: ~p is not a member of the cluster.~n",
+                          [node()]),
+                error;
+            {error, only_member} ->
+                io:format("Failed: ~p is the only member.~n", [node()]),
+                error
+        end
+    catch
+        Exception:Reason ->
+            lager:error("Leave failed ~p:~p", [Exception, Reason]),
+            io:format("Leave failed, see log for details~n"),
+            error
+    end.
 
 remove([Node]) ->
     remove_node(list_to_atom(Node)).

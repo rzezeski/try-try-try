@@ -334,7 +334,7 @@ Where's The Redundancy?
 
 The keen readers out there might have noticed that the stat vnode has no redundancy.  That's right, there's none there.  Follow the code path from entry request to writing of the stat, you'll find no code that copies the data.  If you start taking down nodes you'll find that stats start to disappear.
 
-When using Riak Core you must remember that it's a _tool_ for writing Dynamo based systems and it doesn't do everything for you.  In my next post I will talk about the idea of coordination and I'll write a stat coordinator for the RTS application.
+When using Riak Core you must remember that it's a _tool_ for writing distributed systems and it doesn't do everything for you.  In my next post I will talk about the idea of coordination and I'll write a stat coordinator for the RTS application.
 
 
 Other Examples

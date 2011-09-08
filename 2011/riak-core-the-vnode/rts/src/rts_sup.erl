@@ -32,18 +32,6 @@ init(_Args) ->
             {riak_core_vnode_master, start_link, [rts_stat_vnode]},
             permanent, 5000, worker, [riak_core_vnode_master]},
 
-    {ok, Port} = application:get_env(rts, http_port),
-    Dispatch = [{["rts", "entry", client], rts_wm_entry, []}],
-
-    Config = [{ip, "0.0.0.0"},
-              {port, Port},
-              {log_dir, "log/access"},
-              {dispatch, Dispatch}],
-
-    Web = {rts_web,
-           {webmachine_mochiweb, start, [Config]},
-           permanent, 5000, worker, dynamic},
-
-    { ok,
-        { {one_for_one, 5, 10},
-          [VMaster, Entry, Stat, Web]}}.
+    {ok,
+     {{one_for_one, 5, 10},
+      [VMaster, Entry, Stat]}}.

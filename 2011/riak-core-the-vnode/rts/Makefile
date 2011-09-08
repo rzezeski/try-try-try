@@ -1,3 +1,5 @@
+.PHONY: deps
+
 all: deps compile
 
 compile:
@@ -15,8 +17,14 @@ distclean: clean devclean relclean
 rel: all
 	./rebar generate
 
+relclean:
+	rm -rf rel/rts
+
 devrel: dev1 dev2 dev3
 
 dev1 dev2 dev3:
 	mkdir -p dev
 	(cd rel && ../rebar generate target_dir=../dev/$@ overlay_vars=vars/$@.config)
+
+devclean:
+	rm -rf dev

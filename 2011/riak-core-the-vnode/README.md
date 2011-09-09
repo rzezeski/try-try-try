@@ -166,7 +166,7 @@ A _handoff_ occurs when a vnode realizes it's not on the proper node.  This will
 
 Implementing handoff seems hard on the surface but it's nothing to be afraid of.  The key thing to remember about handoff is it's purpose is to transfer data from one vnode to another.  Data transfer, that's it.  This means that you don't have to implement handoff if your vnode is purely computational.  Well, you should write the callbacks but they won't have to do anything.
 
-The players in handoff are `is_empty/1`, `delete/1`, `handoff_starting/2`, `handoff_cancelled/1`, `encode_handoff_item/2`, `handle_handoff_data/2`, and `handle_handoff_command/3`.
+The players in handoff are `is_empty/1`, `delete/1`, `handoff_starting/2`, `handoff_cancelled/1`, `encode_handoff_item/2`, `handle_handoff_data/2`, `handle_handoff_command/3`, and `handoff_finished/2`.
 
 ### is_empty(State) -> Result ###
 
@@ -204,6 +204,8 @@ Invoked by the container when it's determined a handoff must occur.  The vnode h
     Result = {ok, NewState}
 
 The _handoff manager_ allows a set number of concurrent handoff operations.  By default it's 4 but this can be adjusted.  If it's determined that the maximum concurrency has been reached then the container will invoke this callback.  You could use this to undo anything you might have done in `handoff_starting/2`.
+
+This callback is also invoked if an error occured during handoff.
 
 ### encode_handoff_item(K, V) -> Result ###
 
@@ -269,6 +271,17 @@ In the case of the stat vnode I'm using a [dict](http://www.erlang.org/doc/man/d
         {reply, Acc, State}.
 
 I do wonder if this fold request should have been it's own callback in the vnode behavior, but that's discussion for another day.
+
+
+### handoff_finished(TargetNode, State) -> Result ###
+
+    TargetNode = node()
+    Result = any()
+    State = term()
+
+This callback is invoked when all data has been successfully handed
+off to the `TargetNode`.  The `Result` can be anything and is ignored
+by the container.
 
 
 Using RTS

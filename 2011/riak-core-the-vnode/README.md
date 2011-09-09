@@ -49,9 +49,9 @@ the vnode life-cycle.  When a pid linked to the vnode crashes the
 
 ### init([Index]) -> Result ###
 
-    Index = int() >= 0
-    Result = {ok, State}
-    State = term()
+    Index       :: int() >= 0
+    Result      :: {ok, State}
+    State       :: term()
 
 This callback initializes the state of the vnode.  My entry vnode needs to store the regexp to trigger fun mapping so that the command callback can access it later.
 
@@ -68,8 +68,9 @@ My stat vnode needs to track the stat updates as they are sent in.
 
 ### terminate(Reason, State) -> Result ###
 
-    Reason = normal | shutdown | {shutdown, term()} | term()
-    State = Result = term()
+    Reason      :: normal | shutdown | {shutdown, term()} | term()
+    State       :: term()
+    Result      :: term()
 
 Used to cleanup any resources held by the vnode.  The `Reason` will depend on how the vnode was stopped.  Since the vnode container is simply a _gen\_fsm_ underneath you can read more about the `Reason` [here](http://erldocs.com/R14B/stdlib/gen_fsm.html).  The `State` is the final state of the vnode and `Result` can be anything but will be ignored by the container.
 
@@ -81,10 +82,11 @@ Since both the entry and stat vnodes keep everything in memory Erlang will handl
 
 ### handle_exit(Pid, Reason, State) -> Result ###
 
-    Pid = pid()
-    Reason = State = term()
-    Result = {noreply, NewState}
-           | {stop, NewState}
+    Pid         :: pid()
+    Reason      :: term()
+    State       :: term()
+    Result      :: {noreply, NewState}
+                 | {stop, NewState}
 
 When a process linked to the vnode dies this callback will be invoked
 with the `Pid` of the crashed process along with the `Reason` for the
@@ -109,12 +111,13 @@ To implement a command you add a new `handle_command/3` [function clause](http:/
 
 ### handle_command(Request, Sender, State) -> Result ###
 
-    Request = term()
-    Sender = sender()
-    State = NewState = term()
-    Result = {reply, Reply, NewState}
-             | {noreply, NewState}
-             | {stop, Reason, NewState}
+    Request     :: term()
+    Sender      :: sender()
+    State       :: term()
+    NewState    :: term()
+    Result      :: {reply, Reply, NewState}
+                 | {noreply, NewState}
+                 | {stop, Reason, NewState}
 
 The `Request` can be anything (i.e. any term) but is typically a _tagged tuple_.  The `Sender` is a representation of the client process but is typically used as an opaque value that you would use with a utility function such as `riak_core_vnode:reply/2`.  The `State` is much like state in a _gen\_server_ and is there to track data across callback invocations.
 
@@ -212,8 +215,10 @@ The players in handoff are `is_empty/1`, `delete/1`, `handoff_starting/2`, `hand
 
 ### is_empty(State) -> Result ###
 
-    State = NewState = term()
-    Result = {true, NewState} | {false, NewState}
+    State       :: term()
+    NewState    :: term()
+    Result      :: {true, NewState}
+                 | {false, NewState}
 
 Once the container has determined a vnode is out of place it's first action is determine if there is any data to be transferred.  If there is then return _true_ otherwise return _false_.  When a vnode is deemed empty the `delete/3` callback will be invoked.
 
@@ -227,23 +232,26 @@ The stat vnode checks the size of the `stats` dict to determine if it's empty.
 
 ### delete(State) -> Result ###
 
-    State = NewState = term()
-    Result = {ok, NewState}
+    State       :: term()
+    NewState    :: term()
+    Result      :: {ok, NewState}
 
 The container will invoke this callback when it's determined there is no more data to be transferred.  That is, when `is_empty/1` returns _true_.  Use this time to perform any preemptive cleanup of vnode resources.  On return the vnode will be terminated with a `Reason` of `normal` and the `terminate/2` callback will have a chance to make any final cleanup.
 
 ### handoff_starting(TargetNode, State) -> Result ###
 
-    TargetNode = node()
-    Result = {true, NewState} | {false, NewState}
-    State = NewState = term()
+    TargetNode  :: node()
+    Result      :: {true, NewState} | {false, NewState}
+    State       :: term()
+    NewState    :: term()
 
 Invoked by the container when it's determined a handoff must occur.  The vnode has the final say in whether or not the handoff will occur.  Return _true_ to continue and _false_ to cancel.  A vnode might have some heuristic that determines it's load and choose not to participate in handoff if overloaded at the moment.  The `TargetNode` is the node to transfer the data to.
 
 ### handoff_cancelled(State) -> Result ###
 
-    State = NewState = term()
-    Result = {ok, NewState}
+    State       :: term()
+    NewState    :: term()
+    Result      :: {ok, NewState}
 
 The _handoff manager_ allows a set number of concurrent handoff operations.  By default it's 4 but this can be adjusted.  If it's determined that the maximum concurrency has been reached then the container will invoke this callback.  You could use this to undo anything you might have done in `handoff_starting/2`.
 
@@ -251,11 +259,11 @@ This callback is also invoked if an error occured during handoff.
 
 ### encode_handoff_item(K, V) -> Result ###
 
-    K = {Bucket, Key}
-    Bucket = riak_object:bucket()
-    Key = riak_object:key()
-    V = term()
-    Result -> binary()
+    K           :: {Bucket, Key}
+    Bucket      :: riak_object:bucket()
+    Key         :: riak_object:key()
+    V           :: term()
+    Result      :: binary()
 
 It seems there are still remnants of Riak KV leftover in Riak Core.  Notice the notion of bucket/key and their types.  I think the more general contract is that `K` should be a two-tuple and `V` can be anything.  That said, this callback is used by the container to encode data before crossing the wire.  I.e., it serializes the data.  To get this right you have to know three things:
 
@@ -272,10 +280,11 @@ To encode a stat I simply make a two-tuple with the name and value and convert t
 
 ### handle_handoff_data(BinObj, State) -> Result ###
 
-    BinObj = binary()
-    State = NewState = term()
-    Result = {reply, ok, NewState}
-           | {reply, {error, Error}, NewState}
+    BinObj      :: binary()
+    State       :: term()
+    NewState    :: term()
+    Result      :: {reply, ok, NewState}
+                 | {reply, {error, Error}, NewState}
 
 This callback deserializes handoff data as it comes across.  It's job is to reconstruct the vnode state from the `BinObj` binaries.  If there is a problem decoding the data then reply with `{error, Error}` that describes the failure.
 
@@ -289,14 +298,15 @@ To decode a stat I unwrap it with `binary_to_term/1` and insert it into the loca
 
 ### handle_handoff_command(Request, Sender, State) -> Result ###
 
-    Request = term()
-    Sender = sender()
-    State = NewState = term()
-    Result = {reply, Reply, NewState}
-           | {noreply, NewState}
-           | {forward, NewState}
-           | {drop, NewState}
-           | {stop, Reason, NewState}
+    Request     :: term()
+    Sender      :: sender()
+    State       :: term()
+    NewState    :: term()
+    Result      :: {reply, Reply, NewState}
+                 | {noreply, NewState}
+                 | {forward, NewState}
+                 | {drop, NewState}
+                 | {stop, Reason, NewState}
 
 This callback is very similar to `handle_command/3` but is instead invoked when a request is received **during** handoff.  It has two additional possible return types as well: _forward_ and _drop_.  The _forward_ reply will send the request to the target node.  The _drop_ reply will exhibit the same behavior as noreply but is used to signify that you are "dropping" this request on the floor.  That is, you won't even attempt to fulfill it.
 
@@ -317,9 +327,9 @@ I do wonder if this fold request should have been it's own callback in the vnode
 
 ### handoff_finished(TargetNode, State) -> Result ###
 
-    TargetNode = node()
-    Result = any()
-    State = term()
+    TargetNode  :: node()
+    Result      :: any()
+    State       :: term()
 
 This callback is invoked when all data has been successfully handed
 off to the `TargetNode`.  The `Result` can be anything and is ignored

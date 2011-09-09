@@ -43,7 +43,9 @@ As you can see a vnode takes on a lot of responsibility.  Luckily, the good folk
 Life-cycle Callbacks
 ----------
 
-The `init/1` and `terminate/2` callbacks are called at the edges of the vnode life-cycle.
+The `init/1` and `terminate/2` callbacks are called at the edges of
+the vnode life-cycle.  When a pid linked to the vnode crashes the
+`handle_exit/3` callback will be invoked.
 
 ### init([Index]) -> Result ###
 
@@ -75,6 +77,26 @@ Since both the entry and stat vnodes keep everything in memory Erlang will handl
 
     terminate(_Reason, _State) ->
         ok.
+
+
+### handle_exit(Pid, Reason, State) -> Result ###
+
+    Pid = pid()
+    Reason = State = term()
+    Result = {noreply, NewState}
+           | {stop, NewState}
+
+When a process linked to the vnode dies this callback will be invoked
+with the `Pid` of the crashed process along with the `Reason` for the
+crash and the vnode's current `State`.  At this point you have two
+choices.
+
+1. The linked `Pid` is vital to the functioning of the vnode so you
+return `{stop, NewState}` to bring the vnode down as well.
+
+2. The linked `Pid` isn't vital so you log a warning and return
+`{noreply, NewState}` to allow the vnode to continue execution.
+
 
 Commands
 ----------

@@ -181,6 +181,26 @@ The stat vnode is like a mini [redis](http://redis.io/) in that it offers in-pla
         {reply, ok, State#state{stats=Stats}}.
 
 
+"Covering" Commands
+----------
+
+In 1.0 the idea of a "covering" command was added to the core vnode
+abstraction.  The `handle_coverage/4` callback along with a
+corresponding coverage behavior implementation allows you to implement
+a command that "covers" the entire key space.  For example, this is
+used to implement Riak's list keys operation as well as range queries
+for secondary indices.  Note, this is **NOT** pulling the objects out
+first.  It passes the operation all the way down to the vnode which
+means it can stay very efficient.  This opens up the door for other
+cool things like a native range operation that would allow you to
+perform a range query on the primary key and get back the **objects**
+that match that range; and it would be done in an efficient manner
+when using an ordered backend like leveldb.
+
+In the future I'll be writing a dedicated post on implementing a
+coverage command but for now you'll have to look at the code.
+
+
 Handoff
 ----------
 
@@ -304,26 +324,6 @@ I do wonder if this fold request should have been it's own callback in the vnode
 This callback is invoked when all data has been successfully handed
 off to the `TargetNode`.  The `Result` can be anything and is ignored
 by the container.
-
-
-"Covering" Commands
-----------
-
-In 1.0 the idea of a "covering" command was added to the core vnode
-abstraction.  The `handle_coverage/4` callback along with a
-corresponding coverage behavior implementation allows you to implement
-a command that "covers" the entire key space.  For example, this is
-used to implement Riak's list keys operation as well as range queries
-for secondary indices.  Note, this is **NOT** pulling the objects out
-first.  It passes the operation all the way down to the vnode which
-means it can stay very efficient.  This opens up the door for other
-cool things like a native range operation that would allow you to
-perform a range query on the primary key and get back the **objects**
-that match that range; and it would be done in an efficient manner
-when using an ordered backend like leveldb.
-
-In the future I'll be writing a dedicated post on implementing a
-coverage command but for now you'll have to look at the code.
 
 
 Using RTS

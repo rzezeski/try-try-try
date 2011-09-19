@@ -14,6 +14,7 @@
          handoff_finished/2,
          handle_handoff_data/2,
          encode_handoff_item/2,
+         handle_coverage/4,
          handle_exit/3]).
 
 -record(state, {partition}).
@@ -58,6 +59,9 @@ delete(State) ->
 
 handle_exit(_Pid, _Reason, _State) ->
     {noreply, _State}.
+
+handle_coverage(_Req, _KeySpaces, _Sender, State) ->
+    {stop, not_implemented, State}.
 
 terminate(_Reason, _State) ->
     ok.

@@ -40,19 +40,6 @@ init(_Args) ->
                {rts_get_fsm_sup, start_link, []},
                permanent, infinity, supervisor, [rts_get_fsm_sup]},
 
-
-    {ok, Port} = application:get_env(rts, http_port),
-    Dispatch = [{["rts", "entry", client], rts_wm_entry, []}],
-
-    Config = [{ip, "0.0.0.0"},
-              {port, Port},
-              {log_dir, "log/access"},
-              {dispatch, Dispatch}],
-
-    Web = {rts_web,
-           {webmachine_mochiweb, start, [Config]},
-           permanent, 5000, worker, dynamic},
-
-    { ok,
-        { {one_for_one, 5, 10},
-          [VMaster, Entry, Stat, WriteFSMs, GetFSMs, Web]}}.
+    {ok,
+     {{one_for_one, 5, 10},
+      [VMaster, Entry, Stat, WriteFSMs, GetFSMs]}}.

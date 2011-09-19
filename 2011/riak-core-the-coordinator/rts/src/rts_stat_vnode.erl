@@ -17,6 +17,7 @@
          handoff_finished/2,
          handle_handoff_data/2,
          encode_handoff_item/2,
+         handle_coverage/4,
          handle_exit/3]).
 
 -export([
@@ -117,7 +118,6 @@ handle_command({sadd, ReqID, StatName, Val}, _Sender, #state{stats=Stats0}=State
     Stats = dict:update(StatName, F, sets:from_list([Val]), Stats0),
     {reply, {ok, ReqID}, State#state{stats=Stats}}.
 
-
 handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, _Sender, State) ->
     Acc = dict:fold(Fun, Acc0, State#state.stats),
     {reply, Acc, State}.
@@ -148,8 +148,11 @@ is_empty(State) ->
 delete(State) ->
     {ok, State}.
 
-handle_exit(_Pid, _Reason, _State) ->
-    {noreply, _State}.
+handle_coverage(_Req, _KeySpaces, _Sender, State) ->
+    {stop, not_implemented, State}.
+
+handle_exit(_Pid, _Reason, State) ->
+    {noreply, State}.
 
 terminate(_Reason, _State) ->
     ok.

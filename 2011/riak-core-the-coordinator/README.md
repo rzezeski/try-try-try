@@ -1,15 +1,15 @@
 Riak Core, The Coordinator
 ==========
 
-At the end of my [vnode](https://github.com/rzezeski/try-try-try/tree/master/2011/riak-core-the-vnode) post I asked the question _Where's the redundancy?_  There is none in RTS, thus far.  Riak Core isn't magic but rather a suite of tools for building distributed, highly available systems.  You have to build your own redundancy.  In this post I'll talk about the _coordinator_ and show how to implement one.
+At the end of my [vnode](https://github.com/rzezeski/try-try-try/tree/master/2011/riak-core-the-vnode) post I asked the question "Where's the redundancy?"  Currently there is none in RTS.  Riak Core isn't magic.  It won't do everything for you.  Instead it's a suite of tools for building distributed systems.  If you want redundancy you'll have to build it yourself.  In this post I'll do just that by implementing a  _coordinator_ for RTS.
 
 
 What is a Coordinator?
 ----------
 
-Logically speaking, a _coordinator_ is just what it sounds like.  It's job is to coordinate incoming requests.  It enforces the consistency semantics of [N, R and W](http://wiki.basho.com/Riak-Glossary.html#Quorum) and performs anti-entropy services like [read repair](http://wiki.basho.com/Riak-Glossary.html#Read-Repair).  In simpler terms, it's responsible for distributing data across the cluster and re-syncing data when it finds conflicts.  You could think of vnodes as the things that Get Shit Done (TM) and the coordinators as the other things telling them what to do and overseeing the work.  They work in tandem to make sure your request is being handled as best as it can.
+A _coordinator_ is just what it sounds like.  It's job is to coordinate incoming requests.  It enforces the consistency semantics of [N, R and W](http://wiki.basho.com/Riak-Glossary.html#Quorum) and performs anti-entropy services like [read repair](http://wiki.basho.com/Riak-Glossary.html#Read-Repair).  In simpler terms, it's responsible for distributing data across the cluster and syncing data when it finds conflicts.  You could think of vnodes as the things that Get Shit Done (TM) and the coordinators as the other things telling them what to do and overseeing the work.  They work in tandem to make sure your request is being handled as best as it can.
 
-To be more concrete a coordinator is a [gen_fsm](http://www.erlang.org/doc/man/gen_fsm.html).  Each request is handled in it's own Erlang process.  A coordinator communicates with the vnode instances to fulfill requests.
+Techincally speaking, a coordinator is a [gen_fsm](http://www.erlang.org/doc/man/gen_fsm.html).  Each request is handled in it's own Erlang process.  A coordinator communicates with the vnode instances to fulfill requests.
 
 To wrap up, a coordinator
 
@@ -27,18 +27,18 @@ To wrap up, a coordinator
 Implementing a Coordinator
 ----------
 
-Unlike the vnode, Riak Core doesn't define a coordinator behavior.  You have to roll your own each time.  I used Riak's [get](https://github.com/basho/riak_kv/blob/master/src/riak_kv_get_fsm.erl) and [put](https://github.com/basho/riak_kv/blob/master/src/riak_kv_put_fsm.erl) coordinators for guidance.  You'll notice they both have a similar structure.  I'm going to propose a general structure here that you can use as your guide, but remember that there's nothing set in stone on how to write a coordinator.
+Unlike the vnode, Riak Core doesn't define a coordinator behavior.  You have to roll your own each time.  I used Riak's [get](https://github.com/basho/riak_kv/blob/1.0/src/riak_kv_get_fsm.erl) and [put](https://github.com/basho/riak_kv/blob/1.0/src/riak_kv_put_fsm.erl) coordinators for guidance.  You'll notice they both have a similar structure.  I'm going to propose a general structure here that you can use as your guide, but remember that there's nothing set in stone on how to write a coordinator.
 
 Before moving forward it's worth mentioning that you'll want to instantiate these coordinators under a [simple_one_for_one](http://www.erlang.org/doc/design_principles/sup_princ.html#id69831) supervisor.  If you've never heard of `simple_one_for_one` before then think of it as a factory for Erlang processes of the same type.  An incoming request will at some point call `supervisor:start_child/2` to instantiate a new FSM dedicated to handling this specific request.
 
 ### init(Args) -> {ok, InitialState, SD, Timeout} ###
 
-    Args = term()
-    InitialState = atom()
-    SD = term()
-    Timeout = integer()
+    Args                :: term()
+    InitialState        :: atom()
+    SD                  :: term()
+    Timeout             :: integer()
 
-This is actually part of the `gen_fsm` behavior, i.e. it's a callback you must implement.  It's job is to specify the `InitialState` name and it's data (`SD`).  In this case you'll also want to specify a `Timeout` value of `0` in order to immediately go to the `InitialState`, `prepare`.
+This is actually part of the `gen_fsm` behavior.  It's a callback you must implement to specify the `InitialState` name and it's data (`SD`).  In this case you'll also want to specify a `Timeout` value of `0` in order to immediately go to the `InitialState`, `prepare`.
 
 A get coordinator for RTS is passed four arguments.
 
@@ -50,7 +50,7 @@ A get coordinator for RTS is passed four arguments.
 
 4. `StatName`: The name of the statistic the requester is interested in.
 
-All this data will be passed as a list to init and the only work that needs to be done is to build the initial state record and tell the FSM to proceed to the `prepare` state.
+This data will be passed as a list to init at which point it will build the initial state record and tell the FSM to proceed to the `prepare` state.
 
     init([ReqId, From, Client, StatName]) ->
         SD = #state{req_id=ReqId,
@@ -80,9 +80,9 @@ Here is the code.
 
 ### prepare(timeout, SD0) -> {next_state, NextState, SD, Timeout} ###
 
-    SD0 = SD = term()
-    NextState = atom()
-    Timeout = integer()
+    SD0 = SD            :: term()
+    NextState           :: atom()
+    Timeout             :: integer()
 
 The job of `prepare` is to build the _preference list_.  The preference list is the preferred set of vnodes that should participate in this request.  Most of the work is actually done by `riak_core_util:chash_key/1` and `riak_core_apl:get_apl/3`.  Both the get and write coordinators do the same thing here.
 
@@ -104,10 +104,10 @@ The fact that the key is a two-tuple is simply a consequence of the fact that Ri
 
 ### execute(timeout, SD0) -> {next_state, NextState, SD} ###
 
-    SD0 = SD = term()
-    NextState = atom()
+    SD0 = SD            :: term()
+    NextState           :: atom()
 
-The `execute` state executes the request by sending commands to the vnodes in the preflist and then putting the coordinator into a waiting state.  The code to do this in RTS is really simple; call the vnode command passing it the preference list.  Under the covers the vnode has been changed to use `riak_core_vnode_master:command/4` which will distribute the commands across the `Preflist` for you.  I'll talk about this later in the post.
+The `execute` state executes the request by sending commands to the vnodes in the preflist and then putting the coordinator into a waiting state.  The code to do this in RTS is really simple; call the vnode command passing it the preference list.  Under the covers the vnode uses `riak_core_vnode_master:command/4` which will distribute the commands across the `Preflist` for you.  I'll talk about this later in the post.
 
 Here's the code for the get coordinator.
 
@@ -130,15 +130,15 @@ The code for the write coordinator is almost identical except it's parameterized
 
 ### waiting(Reply, SD0) -> Result ###
 
-    Reply = {ok, ReqID}
-    Result = {next_state, NextState, SD}
-           | {stop, normal, SD}
-    NextState = atom()
-    SD0 = SD = term()
+    Reply               :: {ok, ReqID}
+    Result              :: {next_state, NextState, SD}
+                         | {stop, normal, SD}
+    NextState           :: atom()
+    SD0 = SD            :: term()
 
 This is probably the most interesting state in the coordinator as it's job is to enforce the consistency requirements and possibly perform anti-entropy in the case of a get.  The coordinator waits for replies from the various vnode instances it called in `execute` and stops once it's requirements have been met.  The typical shape of this function is to pattern match on the `Reply`, check the state data `SD0`, and then either continue waiting or stop depending on the current state data.
 
-The get coordinator waits for replies with the correct `ReqId`, increments the reply count and adds the `Val` to the list of `Replies`.  If the quorum `R` has been met then return the `Val` to the requester and stop the coordinator.  If the vnodes didn't agree on the value then return all observed values.  In this post I am punting on the conflict resolution and anti-entropy part of the coordinator and exposing the inconsistent state to the client application.  I'll implement them in my next post.  If the quorum hasn't been met then continue waiting for more replies.
+The get coordinator waits for replies with the correct `ReqId`, increments the reply count and adds the `Val` to the list of `Replies`.  If the quorum `R` has been met then return the `Val` to the requester and stop the coordinator.  If the vnodes didn't agree on the value then return all observed values.  In this post I am punting on the conflict resolution and anti-entropy part of the coordinator and exposing the inconsistent state to the client application.  I'll implement conflict resolution in my next post.  If the quorum hasn't been met then continue waiting for more replies.
 
     waiting({ok, ReqID, Val}, SD0=#state{from=From, num_r=NumR0, replies=Replies0}) ->
         NumR = NumR0 + 1,
@@ -158,7 +158,7 @@ The get coordinator waits for replies with the correct `ReqId`, increments the r
             true -> {next_state, waiting, SD}
         end.
 
-The write coordinator has things a little easier here cause all it cares about is knowing that `W` vnodes executed it's write request.
+The write coordinator has things a little easier here because it only cares that `W` vnodes executed it's write request.
 
     waiting({ok, ReqID}, SD0=#state{from=From, num_w=NumW0}) ->
         NumW = NumW0 + 1,
@@ -180,7 +180,7 @@ Some of you may be wondering why I didn't write a coordinator for the [entry vno
 Changes to rts.erl and rts_stat_vnode
 ----------
 
-Now that we've written coordinators to handle requests to RTS we need to refactor the old [rts.erl](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-the-vnode/rts/src/rts.erl) and [rts_stat_vnode](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-the-vnode/rts/src/rts_stat_vnode.erl).  The model has changed from rts calling the vnode directly to delegating the work to [rts_get_fsm](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-the-coordinator/rts/src/rts_get_fsm.erl) which will call the various vnodes and collect responses.
+Now that I've written a coordinator to handle requests to RTS I need to refactor the old [rts.erl](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-the-vnode/rts/src/rts.erl) and [rts_stat_vnode](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-the-vnode/rts/src/rts_stat_vnode.erl).  The model has changed from calling the vnode directly to delegating the work to [rts_get_fsm](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-the-coordinator/rts/src/rts_get_fsm.erl) which will call the various vnodes and collect responses.
 
     rts:get ----> rts_stat_vnode:get (local)
 
@@ -207,13 +207,13 @@ The write requests underwent a similar refactoring.
 
 The `rts_stat_vnode` was refactored to use `riak_core_vnode_master:command/4` which takes a `Preflist`, `Msg`, `Sender` and `VMaster` as argument.
 
-`Preflist`: The list of vnodes to send the command to.
+* `Preflist`: The list of vnodes to send the command to.
 
-`Msg`: The command to send.
+* `Msg`: The command to send.
 
-`Sender`: A value describing who sent the request, in this case the coordinator.  This is used by the vnode to correctly address the reply message.
+* `Sender`: A value describing who sent the request, in this case the coordinator.  This is used by the vnode to correctly address the reply message.
 
-`VMaster`: The name of the vnode master for the vnode type to send this command to.
+* `VMaster`: The name of the vnode master for the vnode type to send this command to.
 
     get(Preflist, ReqID, StatName) ->
         riak_core_vnode_master:command(Preflist,

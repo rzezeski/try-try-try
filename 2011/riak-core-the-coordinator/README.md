@@ -305,7 +305,7 @@ You're results my not exactly match mine as it depends on which vnode instances 
 
 ### Let's Compare the Before and After Preflist ###
 
-Notice that some gets on `rts2` return a single value as before whereas others return a list of values.  The reason for this is because the `Preflist` calculation is now including _fallback_ vnodes.  A fallback vnode is one that is not on it's appropriate physical node.  Since we killed `rts1` it's vnode requests must be routed somewhere else.  That somewhere else is a fallback vnode.  Since the request-reply model between the coordinator and vnode is asynchronous our reply value will depend on which vnode instances reply first.  If the instances with values reply first then you get a single value, otherwise you get a list of values.  My next post will improve this behavior slightly to take advantage of the fact that we **know** there are still two nodes with the data and there should be no reason to return conflicting values.
+Notice that some gets on `rts2` return a single value as before whereas others return a list of values.  The reason for this is because the `Preflist` calculation is now including _fallback_ vnodes.  A fallback vnode is one that is not on it's appropriate physical node.  As a consequence of killing `rts1` it's vnode requests must be routed to one of the other nodes.  Since the request-reply model between the coordinator and vnode is asynchronous our reply value will depend on which vnode instances reply first.  If the instances with values reply first then you get a single value, otherwise you get a list of values.
 
     (rts2@127.0.0.1)6> rts:get_dbg_preflist("progski", "total_reqs"). 
     [{730750818665451459101842416358141509827966271488,
@@ -349,10 +349,10 @@ In both cases either `rts2` or `rts3` stepped in for the missing `rts1`.  Also, 
       'rts2@127.0.0.1'},
      not_found]
 
-Notice the fallbacks are at the end of each list.  Also notice that since we're on `rts2` that `total_reqs` will almost always return a single value because it's fallback is on another node whereas `GET` has a local fallback and will be more likely to return first.
+Notice the fallbacks are at the end of each list.  Also notice that since we're on `rts2` that `total_reqs` will almost always return a single value because it's fallback is on another node whereas `GET` has a local fallback and will be more likely to return multiple values.
 
 
 Conflict Resolution & Read Repair
 ----------
 
-In the next post I'll be making several enhancements to the get coordinator by performing basic conflict resolution and implementing read repair.
+In the [next post](https://github.com/rzezeski/try-try-try/tree/master/2011/riak-core-conflict-resolution) I'll go over how to implement conflict resolution and read repair in the coordinator.

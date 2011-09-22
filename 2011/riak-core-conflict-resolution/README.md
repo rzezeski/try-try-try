@@ -9,14 +9,13 @@ how a system based on [Riak Core](https://github.com/basho/riak_core)
 goes about enforcing consistency in the face of chaos.
 
 When I think about _consistency_ I like to think about it in terms of
-entropy.  That is, entropy is the lack of consistency and consistency
-is the removal of entropy.  It's much like Socrates's _Theory of
-Opposites_ in that one must arise from the other and there is a
-process which transforms one to the other.  In the case of distributed
-systems, processes like _conflict resolution_ and _read repair_ work
-to take a system from a state of inconsistency to consistency.  These
-processes are constantly working with an evolving data set to provide
-_eventual consistency_.
+entropy.  Entropy is the lack of consistency and consistency is the
+removal of entropy.  It's much like Socrates's _Theory of Opposites_
+in that one must arise from the other and there is a process which
+transforms one to the other.  In the case of distributed systems,
+processes like _conflict resolution_ and _read repair_ constantly work
+to remove entropy from a system.  In a non-quiescent system these
+processes are working towards _eventual consistency_.
 
 That's all well and good, but what does this look like to reify this
 idea?  I'll start with something most of us understand, a RDBMS, and
@@ -80,7 +79,7 @@ department.  The idea of _consistency_ and how to enforce it in a
 distributed system seem to be very application dependent and it will
 take time for Basho to discover the generalities and encode them in
 Core.  There is the
-[riak_object](https://github.com/basho/riak_kv/blob/master/src/riak_object.erl)
+[riak_object](https://github.com/basho/riak_kv/blob/1.0/src/riak_object.erl)
 which contains a basic wrapper for storing data in a Riak Core app
 utilizing vector clocks to detect entropy but unfortunately it's
 relevant bits haven't been pulled down to Core yet.  There is also

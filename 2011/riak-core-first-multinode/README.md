@@ -56,7 +56,6 @@ Let me break that last command down a bit:
 
 Congrats, you have the start of a Riak Core application that can be deployed to multiple nodes and joined together to form a _multinode_ cluster.  Lets start 'er up.
 
-    make
     make rel
     ./rel/mfmn/bin/mfmn console
 
@@ -93,11 +92,9 @@ You should see three `pong` replies.  Now, at this point, it is worth saying tha
 
 Finally, to make sure they really all agree on the shape of the cluster you can ask if the _ring_ is "ready."
 
-    ./dev/dev1/bin/mfmn-admin ringready
+To verify you have a 3 node cluster you can run the `member_status` command.
 
-Generally, this should return `TRUE` but I've noticed occasions were the above sequence of commands doesn't always cause the cluster to agree on the ring immediately.  In that case you might have to try to join two nodes specifically.  For example, if for some reason `mfmn1` and `mfmn2` disagreed on the ring you could try the following.
-
-    ./dev/dev1/bin/mfmn-admin join mfmn2@127.0.0.1
+    ./dev/dev1/bin/mfmn-admin member_status
 
 Now you can attach to the shell of one of the nodes and run the `ping` command.
 

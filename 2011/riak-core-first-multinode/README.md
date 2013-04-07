@@ -3,7 +3,7 @@ Riak Core, First Multinode
 
 Questions about Riak Core seem to be occurring with more frequency on the riak-users mailing list.  Recently [jnewlend](https://github.com/jnewland) threw up a [Riak Core template](https://github.com/websterclay/rebar_riak_core) to be used with [Rebar](https://github.com/basho/rebar).  I thought this was excellent work and ran with it.
 
-While I liked what Mr. Newland had started I felt it could use a little more meat on it's bones.  He created a template to create a Riak Core application but left it as an exercise to the user to do the rest such as build a "multinode" capable release.  With knowledge of Erlang, Rebar, and peeking at the Riak source code this is certainly doable but it's a real PITA when you just want to get something up and running.  I've started [my own fork](https://github.com/rzezeski/rebar_riak_core/tree/multinode) that allows one to standup a _multinode_ release fairly easily.
+While I liked what Mr. Newland had started I felt it could use a little more meat on its bones.  He created a template to create a Riak Core application but left it as an exercise to the user to do the rest such as build a "multinode" capable release.  With knowledge of Erlang, Rebar, and peeking at the Riak source code this is certainly doable but it's a real PITA when you just want to get something up and running.  I've started [my own fork](https://github.com/rzezeski/rebar_riak_core/tree/multinode) that allows one to standup a _multinode_ release fairly easily.
 
 Um, Ryan...What The Hell is Multinode?
 ----------

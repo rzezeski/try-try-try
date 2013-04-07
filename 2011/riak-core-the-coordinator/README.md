@@ -9,7 +9,7 @@ What is a Coordinator?
 
 A _coordinator_ is just what it sounds like.  It's job is to coordinate incoming requests.  It enforces the consistency semantics of [N, R and W](http://wiki.basho.com/Riak-Glossary.html#Quorum) and performs anti-entropy services like [read repair](http://wiki.basho.com/Riak-Glossary.html#Read-Repair).  In simpler terms, it's responsible for distributing data across the cluster and syncing data when it finds conflicts.  You could think of vnodes as the things that Get Shit Done (TM) and the coordinators as the other things telling them what to do and overseeing the work.  They work in tandem to make sure your request is being handled as best as it can.
 
-Techincally speaking, a coordinator is a [gen_fsm](http://www.erlang.org/doc/man/gen_fsm.html).  Each request is handled in it's own Erlang process.  A coordinator communicates with the vnode instances to fulfill requests.
+Techincally speaking, a coordinator is a [gen_fsm](http://www.erlang.org/doc/man/gen_fsm.html).  Each request is handled in its own Erlang process.  A coordinator communicates with the vnode instances to fulfill requests.
 
 To wrap up, a coordinator
 
@@ -38,7 +38,7 @@ Before moving forward it's worth mentioning that you'll want to instantiate thes
     SD                  :: term()
     Timeout             :: integer()
 
-This is actually part of the `gen_fsm` behavior.  It's a callback you must implement to specify the `InitialState` name and it's data (`SD`).  In this case you'll also want to specify a `Timeout` value of `0` in order to immediately go to the `InitialState`, `prepare`.
+This is actually part of the `gen_fsm` behavior.  It's a callback you must implement to specify the `InitialState` name and its data (`SD`).  In this case you'll also want to specify a `Timeout` value of `0` in order to immediately go to the `InitialState`, `prepare`.
 
 A get coordinator for RTS is passed four arguments.
 
@@ -100,7 +100,7 @@ Here is the code.
         SD = SD0#state{preflist=Prelist},
         {next_state, execute, SD, 0}.
 
-The fact that the key is a two-tuple is simply a consequence of the fact that Riak Core was extracted from Riak and some of it's key-value semantics crossed during the extraction.  In the future things like this may change.
+The fact that the key is a two-tuple is simply a consequence of the fact that Riak Core was extracted from Riak and some of its key-value semantics crossed during the extraction.  In the future things like this may change.
 
 ### execute(timeout, SD0) -> {next_state, NextState, SD} ###
 
@@ -136,7 +136,7 @@ The code for the write coordinator is almost identical except it's parameterized
     NextState           :: atom()
     SD0 = SD            :: term()
 
-This is probably the most interesting state in the coordinator as it's job is to enforce the consistency requirements and possibly perform anti-entropy in the case of a get.  The coordinator waits for replies from the various vnode instances it called in `execute` and stops once it's requirements have been met.  The typical shape of this function is to pattern match on the `Reply`, check the state data `SD0`, and then either continue waiting or stop depending on the current state data.
+This is probably the most interesting state in the coordinator as its job is to enforce the consistency requirements and possibly perform anti-entropy in the case of a get.  The coordinator waits for replies from the various vnode instances it called in `execute` and stops once its requirements have been met.  The typical shape of this function is to pattern match on the `Reply`, check the state data `SD0`, and then either continue waiting or stop depending on the current state data.
 
 The get coordinator waits for replies with the correct `ReqId`, increments the reply count and adds the `Val` to the list of `Replies`.  If the quorum `R` has been met then return the `Val` to the requester and stop the coordinator.  If the vnodes didn't agree on the value then return all observed values.  In this post I am punting on the conflict resolution and anti-entropy part of the coordinator and exposing the inconsistent state to the client application.  I'll implement conflict resolution in my next post.  If the quorum hasn't been met then continue waiting for more replies.
 
@@ -158,7 +158,7 @@ The get coordinator waits for replies with the correct `ReqId`, increments the r
             true -> {next_state, waiting, SD}
         end.
 
-The write coordinator has things a little easier here because it only cares that `W` vnodes executed it's write request.
+The write coordinator has things a little easier here because it only cares that `W` vnodes executed its write request.
 
     waiting({ok, ReqID}, SD0=#state{from=From, num_w=NumW0}) ->
         NumW = NumW0 + 1,
@@ -174,7 +174,7 @@ The write coordinator has things a little easier here because it only cares that
 What About the Entry Coordinator?
 ----------
 
-Some of you may be wondering why I didn't write a coordinator for the [entry vnode](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-the-coordinator/rts/src/rts_entry_vnode.erl)?  If you don't remember this is responsible for matching an incoming log entry and then executing it's trigger function.  For example, any incoming log entry from an access log in combined logging format will cause the `total_reqs` stat to be incremented by one.  I only want this action to occur at maximum once per entry.  There is no notion of `N`.  I could write a coordinator that tries to make some guarentees about it's execution but for now I'm ok with possibly dropping data occasionally.
+Some of you may be wondering why I didn't write a coordinator for the [entry vnode](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-the-coordinator/rts/src/rts_entry_vnode.erl)?  If you don't remember this is responsible for matching an incoming log entry and then executing its trigger function.  For example, any incoming log entry from an access log in combined logging format will cause the `total_reqs` stat to be incremented by one.  I only want this action to occur at maximum once per entry.  There is no notion of `N`.  I could write a coordinator that tries to make some guarentees about its execution but for now I'm ok with possibly dropping data occasionally.
 
 
 Changes to rts.erl and rts_stat_vnode
@@ -305,7 +305,7 @@ You're results my not exactly match mine as it depends on which vnode instances 
 
 ### Let's Compare the Before and After Preflist ###
 
-Notice that some gets on `rts2` return a single value as before whereas others return a list of values.  The reason for this is because the `Preflist` calculation is now including _fallback_ vnodes.  A fallback vnode is one that is not on it's appropriate physical node.  As a consequence of killing `rts1` it's vnode requests must be routed to one of the other nodes.  Since the request-reply model between the coordinator and vnode is asynchronous our reply value will depend on which vnode instances reply first.  If the instances with values reply first then you get a single value, otherwise you get a list of values.
+Notice that some gets on `rts2` return a single value as before whereas others return a list of values.  The reason for this is because the `Preflist` calculation is now including _fallback_ vnodes.  A fallback vnode is one that is not on its appropriate physical node.  As a consequence of killing `rts1` its vnode requests must be routed to one of the other nodes.  Since the request-reply model between the coordinator and vnode is asynchronous our reply value will depend on which vnode instances reply first.  If the instances with values reply first then you get a single value, otherwise you get a list of values.
 
     (rts2@127.0.0.1)6> rts:get_dbg_preflist("progski", "total_reqs"). 
     [{730750818665451459101842416358141509827966271488,
@@ -349,7 +349,7 @@ In both cases either `rts2` or `rts3` stepped in for the missing `rts1`.  Also, 
       'rts2@127.0.0.1'},
      not_found]
 
-Notice the fallbacks are at the end of each list.  Also notice that since we're on `rts2` that `total_reqs` will almost always return a single value because it's fallback is on another node whereas `GET` has a local fallback and will be more likely to return multiple values.
+Notice the fallbacks are at the end of each list.  Also notice that since we're on `rts2` that `total_reqs` will almost always return a single value because its fallback is on another node whereas `GET` has a local fallback and will be more likely to return multiple values.
 
 
 Conflict Resolution & Read Repair

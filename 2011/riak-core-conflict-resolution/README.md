@@ -55,12 +55,12 @@ hands and returns crap data?  Absolutely not, it pushes the
 enforcement of consistency to read time.  Furthermore, it only
 considers consistency in terms of the nodes it can see.  That is, if
 the cluster splits into two then a read won't fail but instead will
-use the data it has access to determine a response.  When the cluster
+use the data to which it has access to determine a response.  When the cluster
 repairs and another read occurs the system will then take that time to
 perform _conflict resolution_ in order to reconcile any
 inconsistencies that were created by the cluster split.  That is, Riak
-and systems like it build atop Riak Core, are lazy in their
-enforcement of consistency.  Choosing to delay it until absolutely
+and systems like it built atop Riak Core, are lazy in their
+enforcement of consistency, choosing to delay it until absolutely
 needed.
 
 Notice I am not saying one is better than the other.  Both have their

@@ -31,7 +31,7 @@ consistency than I'm talking about here.  No, I'm more interested in
 the _Atomic_ and _Isolated_ parts of the acronym.  It's these parts of
 ACID that give a RDBMS its predictable behavior in the face of
 concurrency.  One transaction cannot affect another concurrent
-transaction (i.e. one can't see the others modifications) and the
+transaction (i.e. one can't see the other's modifications) and the
 **entire** transaction must succeed or fail (i.e. there is no chance
 of partial completion).  This means that modifications are serialized,
 i.e. applied in-full one after another always working with the

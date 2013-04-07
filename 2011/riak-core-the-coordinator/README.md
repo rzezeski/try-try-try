@@ -184,9 +184,9 @@ Now that I've written a coordinator to handle requests to RTS I need to refactor
 
     rts:get ----> rts_stat_vnode:get (local)
 
-                                                               /--> stat_vnode@rts1
-    rts:get ----> rts_get_fsm:get ----> riak_stat_vnode:get --|---> stat_vnode@rts2
-                                                               \--> stat_vnode@rts3
+                                                              /--> stat_vnode@rts1
+    rts:get ----> rts_get_fsm:get ----> rts_stat_vnode:get --|---> stat_vnode@rts2
+                                                              \--> stat_vnode@rts3
 
 
 Instead of performing a synchronous request the `rts:get/2` function now calls the get coordinator and then waits for a response.

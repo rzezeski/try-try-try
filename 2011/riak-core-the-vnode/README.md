@@ -35,7 +35,7 @@ What's a vnode, Anyways?
 
 * Typically many vnodes will run on each physical node
 
-* Each machine has a _vnode master_ who's purpose is to keep track of all active vnodes on it's node
+* Each machine has a _vnode master_ who's purpose is to keep track of all active vnodes on its node
 
 As you can see a vnode takes on a lot of responsibility.  Luckily, the good folks at Basho have already done most of the heavy lifting by providing a [vnode behavior](https://github.com/basho/riak_core/blob/master/src/riak_core_vnode.erl) which you code to.  If Erlang is like a foreign language to you than think of a _behavior_ like an _interface_ in that it declares callback functions that you must implement.  Furthermore, it provides a _container_ which implements the semantics of the behavior and makes calls into your callback module.  Kind of like how J2EE provides a web container and you simply code a Servlet, except way cooler.  By coding to a behavior you are free to focus on the problem you need to solve rather than how to implement a vnode.  That said, you can't do much if you don't understand the inputs and outputs of these callbacks.  That's why you're reading this.
 
@@ -103,7 +103,7 @@ return `{stop, NewState}` to bring the vnode down as well.
 Commands
 ----------
 
-All incoming requests become commands on your vnode.  For example, a _GET_ on Riak KV will end up in the [handle_command](https://github.com/basho/riak_kv/blob/1.0/src/riak_kv_vnode.erl#L259) defined in it's vnode.  For this reason, it might be easiest to start with the question:
+All incoming requests become commands on your vnode.  For example, a _GET_ on Riak KV will end up in the [handle_command](https://github.com/basho/riak_kv/blob/1.0/src/riak_kv_vnode.erl#L259) defined in its vnode.  For this reason, it might be easiest to start with the question:
 
 > What commands will I need to implement?
 
@@ -207,9 +207,9 @@ coverage command but for now you'll have to look at the code.
 Handoff
 ----------
 
-A _handoff_ occurs when a vnode realizes it's not on the proper node.  This will happen when a) the ring has changed because of addition/removal of a node or b) a node comes alive after it has been down.  Riak Core implements _hinted handoff_.  The "hint" is a piece of data that tells the partition where it's proper home is.  Periodically a "home check" is done which uses the hint to determine if the vnode is on the correct physical host.  If it isn't, then it will go into handoff mode transfering it's data to the correct vnode.
+A _handoff_ occurs when a vnode realizes it's not on the proper node.  This will happen when a) the ring has changed because of addition/removal of a node or b) a node comes alive after it has been down.  Riak Core implements _hinted handoff_.  The "hint" is a piece of data that tells the partition where its proper home is.  Periodically a "home check" is done which uses the hint to determine if the vnode is on the correct physical host.  If it isn't, then it will go into handoff mode transfering its data to the correct vnode.
 
-Implementing handoff seems hard on the surface but it's nothing to be afraid of.  The key thing to remember about handoff is it's purpose is to transfer data from one vnode to another.  Data transfer, that's it.  This means that you don't have to implement handoff if your vnode is purely computational.  Well, you should write the callbacks but they won't have to do anything.
+Implementing handoff seems hard on the surface but it's nothing to be afraid of.  The key thing to remember about handoff is its purpose is to transfer data from one vnode to another.  Data transfer, that's it.  This means that you don't have to implement handoff if your vnode is purely computational.  Well, you should write the callbacks but they won't have to do anything.
 
 The players in handoff are `is_empty/1`, `delete/1`, `handoff_starting/2`, `handoff_cancelled/1`, `encode_handoff_item/2`, `handle_handoff_data/2`, `handle_handoff_command/3`, and `handoff_finished/2`.
 
@@ -220,7 +220,7 @@ The players in handoff are `is_empty/1`, `delete/1`, `handoff_starting/2`, `hand
     Result      :: {true, NewState}
                  | {false, NewState}
 
-Once the container has determined a vnode is out of place it's first action is determine if there is any data to be transferred.  If there is then return _true_ otherwise return _false_.  When a vnode is deemed empty the `delete/3` callback will be invoked.
+Once the container has determined a vnode is out of place its first action is determine if there is any data to be transferred.  If there is then return _true_ otherwise return _false_.  When a vnode is deemed empty the `delete/3` callback will be invoked.
 
 The stat vnode checks the size of the `stats` dict to determine if it's empty.
 
@@ -245,7 +245,7 @@ The container will invoke this callback when it's determined there is no more da
     State       :: term()
     NewState    :: term()
 
-Invoked by the container when it's determined a handoff must occur.  The vnode has the final say in whether or not the handoff will occur.  Return _true_ to continue and _false_ to cancel.  A vnode might have some heuristic that determines it's load and choose not to participate in handoff if overloaded at the moment.  The `TargetNode` is the node to transfer the data to.
+Invoked by the container when it's determined a handoff must occur.  The vnode has the final say in whether or not the handoff will occur.  Return _true_ to continue and _false_ to cancel.  A vnode might have some heuristic that determines its load and choose not to participate in handoff if overloaded at the moment.  The `TargetNode` is the node to transfer the data to.
 
 ### handoff_cancelled(State) -> Result ###
 
@@ -322,7 +322,7 @@ In the case of the stat vnode I'm using a [dict](http://www.erlang.org/doc/man/d
         Acc = dict:fold(Fun, Acc0, State#state.stats),
         {reply, Acc, State}.
 
-I do wonder if this fold request should have been it's own callback in the vnode behavior, but that's discussion for another day.
+I do wonder if this fold request should have been its own callback in the vnode behavior, but that's discussion for another day.
 
 
 ### handoff_finished(TargetNode, State) -> Result ###
@@ -405,5 +405,5 @@ When using Riak Core you must remember that it's a _tool_ for writing distribute
 Other Examples
 ----------
 
-Current examples of [Riak Core](https://github.com/basho/riak_core)  in action include [Riak KV](https://github.com/basho/riak_kv) (also just called Riak), [Riak Search](https://github.com/basho/riak_search) and [BashoBanjo](https://github.com/rklophaus/BashoBanjo).  The first two are actual products created and supported by Basho and the third is just something really cool that Rusty Klophaus did.
+Current examples of [Riak Core](https://github.com/basho/riak_core)  in action include [Riak KV](https://github.com/basho/riak_kv) (also just called Riak), [Riak Search](https://github.com/basho/riak_search) and [BashoBanjo](https://github.com/rustyio/BashoBanjo).  The first two are actual products created and supported by Basho and the third is just something really cool that Rusty Klophaus did.
 

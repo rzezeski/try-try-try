@@ -67,7 +67,7 @@ Notice I am not saying one is better than the other.  Both have their
 place and the ultimate system would allow you to choose the semantics
 of your data storage on an as-needed basis.  To a certain extent Riak
 allows you to do this via its quorum parameters but even something
-like `W = M` (that is, all writes must finish before a call returns)
+like `W = N` (that is, all writes must finish before a call returns)
 doesn't get you the consistency found in RDBMS.  Said as succinctly as
 possible, RDBMS says "all of you [nodes] must agree **right now** or I
 will fail the write" whereas something Riak-like says "at some point

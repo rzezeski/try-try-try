@@ -37,7 +37,7 @@ To properly understand inline fields you need to understand the
 _inverted index_ data structure <sup>3</sup>.  As a quick refresher
 the gist is that the index is a map from words to a list of document
 reference/weight pairs.  For each word <sup>4</sup> the index tells
-you in which documents it occurs and it's "weight" in relation to that
+you in which documents it occurs and its "weight" in relation to that
 document, e.g. how many times it occurs.  Search adds a little twist
 to this data structure by allowing an arbitrary list of properties to
 be tacked on to each of these pairs.  For example, Search tracks the
@@ -199,7 +199,7 @@ do how they relate to each other.  In the following table I show the
 performance increase of using the scoped filter query versus the other
 queries.  For example, the scoped filter query has three times the
 throughput and returns in 1/12th of the time, on average, as compared
-to the scoped query.  That is, even it's closest competitor has a
+to the scoped query.  That is, even its closest competitor has a
 latency profile that is an order of magnitude worse.  You may find it
 odd that I included the naive queries in this comparison but I wanted
 to show just how great the difference can be when you don't limit your

@@ -1,6 +1,6 @@
 %% @doc A vnode to crunch incoming log entries.  Attempt to match each
 %% log entry against a registry of regexps.  If a regexp matches then
-%% execute it's corresponding trigger function passing it the {Client,
+%% execute its corresponding trigger function passing it the {Client,
 %% Entry, Regexp} as well as the resulting match.  The trigger
 %% function can then choose to take an action such as update a
 %% statistic via the `rts_stat_vnode'.

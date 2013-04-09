@@ -29,9 +29,9 @@ _ACID_ (Atomic Consistent Isolated Durable).  Notice the word
 _Consistent_ is baked right into the acronym but that's a different
 consistency than I'm talking about here.  No, I'm more interested in
 the _Atomic_ and _Isolated_ parts of the acronym.  It's these parts of
-ACID that give a RDBMS it's predictable behavior in the face of
+ACID that give a RDBMS its predictable behavior in the face of
 concurrency.  One transaction cannot affect another concurrent
-transaction (i.e. one can't see the others modifications) and the
+transaction (i.e. one can't see the other's modifications) and the
 **entire** transaction must succeed or fail (i.e. there is no chance
 of partial completion).  This means that modifications are serialized,
 i.e. applied in-full one after another always working with the
@@ -50,24 +50,24 @@ Riak takes a different approach.  It embraces potential inconsistency
 in return for lower latency and availability.  If a node goes down or
 the network partitions the data is still available for read and write.
 In certain scenarios the data may become inconsistent causing multiple
-concurrent versions to exist.  Does that mean Riak just throws up it's
+concurrent versions to exist.  Does that mean Riak just throws up its
 hands and returns crap data?  Absolutely not, it pushes the
 enforcement of consistency to read time.  Furthermore, it only
 considers consistency in terms of the nodes it can see.  That is, if
 the cluster splits into two then a read won't fail but instead will
-use the data it has access to determine a response.  When the cluster
+use the data to which it has access to determine a response.  When the cluster
 repairs and another read occurs the system will then take that time to
 perform _conflict resolution_ in order to reconcile any
 inconsistencies that were created by the cluster split.  That is, Riak
-and systems like it build atop Riak Core, are lazy in their
-enforcement of consistency.  Choosing to delay it until absolutely
+and systems like it built atop Riak Core, are lazy in their
+enforcement of consistency, choosing to delay it until absolutely
 needed.
 
 Notice I am not saying one is better than the other.  Both have their
 place and the ultimate system would allow you to choose the semantics
 of your data storage on an as-needed basis.  To a certain extent Riak
-allows you to do this via it's quorum parameters but even something
-like `W = M` (that is, all writes must finish before a call returns)
+allows you to do this via its quorum parameters but even something
+like `W = N` (that is, all writes must finish before a call returns)
 doesn't get you the consistency found in RDBMS.  Said as succinctly as
 possible, RDBMS says "all of you [nodes] must agree **right now** or I
 will fail the write" whereas something Riak-like says "at some point
@@ -81,7 +81,7 @@ take time for Basho to discover the generalities and encode them in
 Core.  There is the
 [riak_object](https://github.com/basho/riak_kv/blob/1.0/src/riak_object.erl)
 which contains a basic wrapper for storing data in a Riak Core app
-utilizing vector clocks to detect entropy but unfortunately it's
+utilizing vector clocks to detect entropy but unfortunately its
 relevant bits haven't been pulled down to Core yet.  There is also
 work being done by others in this area such as Mochi Media's
 [statebox](https://github.com/mochi/statebox) abstraction which can be
@@ -331,7 +331,7 @@ how to resolve them.
 
 In order to reconcile conflicts in your system you have to know about
 the type of data being stored.  For example, in Riak the data is an
-opaque blob which means Riak can't really do much on it's own to
+opaque blob which means Riak can't really do much on its own to
 resolve a conflict because it doesn't understand anything about the
 data.  By default Riak will implement a _Last Write Wins_ (LWW)
 behavior which will select the latest object version based on wall
@@ -597,7 +597,7 @@ While statebox saves you a lot of trouble it isn't fool proof.  The
 key is that your statebox window must be larger than the partition
 window (it terms of time and number of operations) or else you
 **will** lose events and thus lose data.  Whether that's acceptable
-depends entirely on your specific application and it's data
+depends entirely on your specific application and its data
 requirements.
 
 Returning to the example, statebox would determine that even though
@@ -672,7 +672,7 @@ reconciled object.  I like to refer to this type of anti-entropy as
 _passive anti-entropy_ because it is secondary to some other primary
 action.  This is opposed to _active anti-entropy_ such as background
 gossiped _Merkle Trees_ which is preemptive and a primary action in
-it's own right.
+its own right.
 
 In RTS I added a state for the read coordinator (`rts_get_fsm`) named
 `finalize`.  This state will not be entered until all `N` replies
@@ -720,7 +720,7 @@ help me test and demonstrate my scenarios.  The first is
 `get_dbg_preflist` which returns a list of `{{Index, Node}, Obj}`.
 That is it shows the mapping of vnodes to their respective values.
 The second function is `dbg_op` which allows me to fake partitioned
-writes.  A partitioned write is one that does not reach all it's
+writes.  A partitioned write is one that does not reach all its
 destination vnodes.
 
 ### Node Goes Down ###
@@ -839,7 +839,7 @@ occurring, should be no different from a single failure as long as the
 number of failures is less than `N`.  Once you lose `N` or more nodes
 you **may** start to lose **some** of your data.  This depends on how
 many nodes you have in the cluster and what the ring partition
-ownership looks like.  Essentially, for data to be lost, it's top `N`
+ownership looks like.  Essentially, for data to be lost, its top `N`
 partitions need to be owned by failed nodes.
 
 ### Partitioned Writes ###
@@ -1011,9 +1011,9 @@ Conflict resolution is not limited to just read time.  It's also
 needed during write time if there is a chance that the objects could
 be out of sync.  Think about hinted handoff for a second.  Hinted
 handoff occurs when a fallback vnode realizes the primary vnode is
-online and it's data can be transferred.  However there is a lag
+online and its data can be transferred.  However there is a lag
 between the time a fallback vnode recognizes the primary is online and
-when it starts transferring it's data.  During this window writes may
+when it starts transferring its data.  During this window writes may
 occur on the primary.  If that is the case then the handoff data
 cannot simply overwrite the local data or else data would be lost
 **locally**.  I emphasize locally because we are talking about a
@@ -1079,6 +1079,6 @@ purpose of this post is as much to learn as it is to teach.
 
 For my next post I'm thinking of either digging into ways to test
 these systems with tools such as QuickCheck or maybe doing an overview
-of every module in Riak Core describing it's purpose.  If you have an
+of every module in Riak Core describing its purpose.  If you have an
 opinion, on anything here, please ping me on
 [twitter](http://twitter.com/#!/rzezeski).

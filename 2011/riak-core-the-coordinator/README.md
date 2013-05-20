@@ -164,10 +164,10 @@ The write coordinator has things a little easier here because it only cares that
         NumW = NumW0 + 1,
         SD = SD0#state{num_w=NumW},
         if
-        NumW =:= ?W ->
+            NumW =:= ?W ->
                 From ! {ReqID, ok},
                 {stop, normal, SD};
-        true -> {next_state, waiting, SD}
+            true -> {next_state, waiting, SD}
         end.
 
 
@@ -182,7 +182,7 @@ Changes to rts.erl and rts_stat_vnode
 
 Now that I've written a coordinator to handle requests to RTS I need to refactor the old [rts.erl](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-the-vnode/rts/src/rts.erl) and [rts_stat_vnode](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-the-vnode/rts/src/rts_stat_vnode.erl).  The model has changed from calling the vnode directly to delegating the work to [rts_get_fsm](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-the-coordinator/rts/src/rts_get_fsm.erl) which will call the various vnodes and collect responses.
 
-    rts:get ----> rts_stat_vnode:get (local)
+    rts:get ----> rts_stat_vnode:get(local)
 
                                                               /--> stat_vnode@rts1
     rts:get ----> rts_get_fsm:get ----> rts_stat_vnode:get --|---> stat_vnode@rts2
@@ -220,7 +220,6 @@ The `rts_stat_vnode` was refactored to use `riak_core_vnode_master:command/4` wh
                                        {get, ReqID, StatName},
                                        {fsm, undefined, self()},
                                        ?MASTER).
-
 
 Coordinators in Action
 ----------

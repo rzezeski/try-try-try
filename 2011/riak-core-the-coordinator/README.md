@@ -174,7 +174,7 @@ The write coordinator has things a little easier here because it only cares that
 What About the Entry Coordinator?
 ----------
 
-Some of you may be wondering why I didn't write a coordinator for the [entry vnode](../riak-core-the-coordinator/rts/src/rts_entry_vnode.erl)?  If you don't remember this is responsible for matching an incoming log entry and then executing its trigger function.  For example, any incoming log entry from an access log in combined logging format will cause the `total_reqs` stat to be incremented by one.  I only want this action to occur at maximum once per entry.  There is no notion of `N`.  I could write a coordinator that tries to make some guarentees about its execution but for now I'm ok with possibly dropping data occasionally.
+Some of you may be wondering why I didn't write a coordinator for the [entry vnode](../riak-core-the-coordinator/rts/src/rts_entry_vnode.erl)?  If you don't remember this is responsible for matching an incoming log entry and then executing its trigger function.  For example, any incoming log entry from an access log in combined logging format will cause the `total_reqs` stat to be incremented by one.  I only want this action to occur at maximum once per entry.  There is no notion of `N`.  I could write a coordinator that tries to make some guarantees about its execution but for now I'm ok with possibly dropping data occasionally.
 
 
 Changes to rts.erl and rts_stat_vnode

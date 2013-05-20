@@ -221,6 +221,7 @@ The `rts_stat_vnode` was refactored to use `riak_core_vnode_master:command/4` wh
                                        {fsm, undefined, self()},
                                        ?MASTER).
 
+
 Coordinators in Action
 ----------
 

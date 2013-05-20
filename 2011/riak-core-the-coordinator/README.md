@@ -215,6 +215,7 @@ The `rts_stat_vnode` was refactored to use `riak_core_vnode_master:command/4` wh
 
 * `VMaster`: The name of the vnode master for the vnode type to send this command to.
 
+So the get/3 looks like this:
 
     get(Preflist, ReqID, StatName) ->
         riak_core_vnode_master:command(Preflist,

@@ -215,11 +215,13 @@ The `rts_stat_vnode` was refactored to use `riak_core_vnode_master:command/4` wh
 
 * `VMaster`: The name of the vnode master for the vnode type to send this command to.
 
+
     get(Preflist, ReqID, StatName) ->
         riak_core_vnode_master:command(Preflist,
                                        {get, ReqID, StatName},
                                        {fsm, undefined, self()},
                                        ?MASTER).
+
 
 Coordinators in Action
 ----------

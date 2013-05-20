@@ -1,7 +1,7 @@
 Riak Core, The Coordinator
 ==========
 
-At the end of my [vnode](https://github.com/rzezeski/try-try-try/tree/master/2011/riak-core-the-vnode) post I asked the question "Where's the redundancy?"  Currently there is none in RTS.  Riak Core isn't magic.  It won't do everything for you.  Instead it's a suite of tools for building distributed systems.  If you want redundancy you'll have to build it yourself.  In this post I'll do just that by implementing a  _coordinator_ for RTS.
+At the end of my [vnode](../riak-core-the-vnode) post I asked the question "Where's the redundancy?"  Currently there is none in RTS.  Riak Core isn't magic.  It won't do everything for you.  Instead it's a suite of tools for building distributed systems.  If you want redundancy you'll have to build it yourself.  In this post I'll do just that by implementing a  _coordinator_ for RTS.
 
 
 What is a Coordinator?
@@ -355,4 +355,4 @@ Notice the fallbacks are at the end of each list.  Also notice that since we're 
 Conflict Resolution & Read Repair
 ----------
 
-In the [next post](https://github.com/rzezeski/try-try-try/tree/master/2011/riak-core-conflict-resolution) I'll go over how to implement conflict resolution and read repair in the coordinator.
+In the [next post](../riak-core-conflict-resolution) I'll go over how to implement conflict resolution and read repair in the coordinator.

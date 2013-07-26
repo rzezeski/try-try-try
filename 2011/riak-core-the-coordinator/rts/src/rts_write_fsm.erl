@@ -1,4 +1,4 @@
-%% @doc The coordinator for stat write opeartions.  This example will
+%% @doc The coordinator for stat write operations.  This example will
 %% show how to properly replicate your data in Riak Core by making use
 %% of the _preflist_.
 -module(rts_write_fsm).

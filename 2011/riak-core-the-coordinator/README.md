@@ -1,7 +1,7 @@
 Riak Core, The Coordinator
 ==========
 
-At the end of my [vnode](https://github.com/rzezeski/try-try-try/tree/master/2011/riak-core-the-vnode) post I asked the question "Where's the redundancy?"  Currently there is none in RTS.  Riak Core isn't magic.  It won't do everything for you.  Instead it's a suite of tools for building distributed systems.  If you want redundancy you'll have to build it yourself.  In this post I'll do just that by implementing a  _coordinator_ for RTS.
+At the end of my [vnode](../riak-core-the-vnode) post I asked the question "Where's the redundancy?"  Currently there is none in RTS.  Riak Core isn't magic.  It won't do everything for you.  Instead it's a suite of tools for building distributed systems.  If you want redundancy you'll have to build it yourself.  In this post I'll do just that by implementing a  _coordinator_ for RTS.
 
 
 What is a Coordinator?
@@ -29,7 +29,7 @@ Implementing a Coordinator
 
 Unlike the vnode, Riak Core doesn't define a coordinator behavior.  You have to roll your own each time.  I used Riak's [get](https://github.com/basho/riak_kv/blob/1.0/src/riak_kv_get_fsm.erl) and [put](https://github.com/basho/riak_kv/blob/1.0/src/riak_kv_put_fsm.erl) coordinators for guidance.  You'll notice they both have a similar structure.  I'm going to propose a general structure here that you can use as your guide, but remember that there's nothing set in stone on how to write a coordinator.
 
-Before moving forward it's worth mentioning that you'll want to instantiate these coordinators under a [simple_one_for_one](http://www.erlang.org/doc/design_principles/sup_princ.html#id69831) supervisor.  If you've never heard of `simple_one_for_one` before then think of it as a factory for Erlang processes of the same type.  An incoming request will at some point call `supervisor:start_child/2` to instantiate a new FSM dedicated to handling this specific request.
+Before moving forward it's worth mentioning that you'll want to instantiate these coordinators under a [simple_one_for_one](http://www.erlang.org/doc/design_principles/sup_princ.html#id72447) supervisor.  If you've never heard of `simple_one_for_one` before then think of it as a factory for Erlang processes of the same type.  An incoming request will at some point call `supervisor:start_child/2` to instantiate a new FSM dedicated to handling this specific request.
 
 ### init(Args) -> {ok, InitialState, SD, Timeout} ###
 
@@ -138,7 +138,7 @@ The code for the write coordinator is almost identical except it's parameterized
 
 This is probably the most interesting state in the coordinator as its job is to enforce the consistency requirements and possibly perform anti-entropy in the case of a get.  The coordinator waits for replies from the various vnode instances it called in `execute` and stops once its requirements have been met.  The typical shape of this function is to pattern match on the `Reply`, check the state data `SD0`, and then either continue waiting or stop depending on the current state data.
 
-The get coordinator waits for replies with the correct `ReqId`, increments the reply count and adds the `Val` to the list of `Replies`.  If the quorum `R` has been met then return the `Val` to the requester and stop the coordinator.  If the vnodes didn't agree on the value then return all observed values.  In this post I am punting on the conflict resolution and anti-entropy part of the coordinator and exposing the inconsistent state to the client application.  I'll implement conflict resolution in my next post.  If the quorum hasn't been met then continue waiting for more replies.
+The get coordinator waits for replies with the correct `ReqId`, increments the reply count and adds the `Val` to the list of `Replies`.  If the quorum `R` has been met then return the `Val` to the requester and stop the coordinator.  If the vnodes didn't agree on the value then return all observed values.  In this post I am punting on the conflict resolution and anti-entropy part of the coordinator and exposing the inconsistent state to the client application.  I'll implement conflict resolution in my [next post](../riak-core-conflict-resolution/README.md).  If the quorum hasn't been met then continue waiting for more replies.
 
     waiting({ok, ReqID, Val}, SD0=#state{from=From, num_r=NumR0, replies=Replies0}) ->
         NumR = NumR0 + 1,
@@ -164,25 +164,25 @@ The write coordinator has things a little easier here because it only cares that
         NumW = NumW0 + 1,
         SD = SD0#state{num_w=NumW},
         if
-        NumW =:= ?W ->
+            NumW =:= ?W ->
                 From ! {ReqID, ok},
                 {stop, normal, SD};
-        true -> {next_state, waiting, SD}
+            true -> {next_state, waiting, SD}
         end.
 
 
 What About the Entry Coordinator?
 ----------
 
-Some of you may be wondering why I didn't write a coordinator for the [entry vnode](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-the-coordinator/rts/src/rts_entry_vnode.erl)?  If you don't remember this is responsible for matching an incoming log entry and then executing its trigger function.  For example, any incoming log entry from an access log in combined logging format will cause the `total_reqs` stat to be incremented by one.  I only want this action to occur at maximum once per entry.  There is no notion of `N`.  I could write a coordinator that tries to make some guarentees about its execution but for now I'm ok with possibly dropping data occasionally.
+Some of you may be wondering why I didn't write a coordinator for the [entry vnode](../riak-core-the-coordinator/rts/src/rts_entry_vnode.erl)?  If you don't remember this is responsible for matching an incoming log entry and then executing its trigger function.  For example, any incoming log entry from an access log in combined logging format will cause the `total_reqs` stat to be incremented by one.  I only want this action to occur at maximum once per entry.  There is no notion of `N`.  I could write a coordinator that tries to make some guarantees about its execution but for now I'm ok with possibly dropping data occasionally.
 
 
 Changes to rts.erl and rts_stat_vnode
 ----------
 
-Now that I've written a coordinator to handle requests to RTS I need to refactor the old [rts.erl](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-the-vnode/rts/src/rts.erl) and [rts_stat_vnode](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-the-vnode/rts/src/rts_stat_vnode.erl).  The model has changed from calling the vnode directly to delegating the work to [rts_get_fsm](https://github.com/rzezeski/try-try-try/blob/master/2011/riak-core-the-coordinator/rts/src/rts_get_fsm.erl) which will call the various vnodes and collect responses.
+Now that I've written a coordinator to handle requests to RTS I need to refactor the old [rts.erl](../riak-core-the-vnode/rts/src/rts.erl) and [rts_stat_vnode](../riak-core-the-vnode/rts/src/rts_stat_vnode.erl).  The model has changed from calling the vnode directly to delegating the work to [rts_get_fsm](../riak-core-the-coordinator/rts/src/rts_get_fsm.erl) which will call the various vnodes and collect responses.
 
-    rts:get ----> rts_stat_vnode:get (local)
+    rts:get ----> rts_stat_vnode:get(local)
 
                                                               /--> stat_vnode@rts1
     rts:get ----> rts_get_fsm:get ----> rts_stat_vnode:get --|---> stat_vnode@rts2
@@ -214,6 +214,8 @@ The `rts_stat_vnode` was refactored to use `riak_core_vnode_master:command/4` wh
 * `Sender`: A value describing who sent the request, in this case the coordinator.  This is used by the vnode to correctly address the reply message.
 
 * `VMaster`: The name of the vnode master for the vnode type to send this command to.
+
+So the get/3 looks like this:
 
     get(Preflist, ReqID, StatName) ->
         riak_core_vnode_master:command(Preflist,
@@ -355,4 +357,4 @@ Notice the fallbacks are at the end of each list.  Also notice that since we're 
 Conflict Resolution & Read Repair
 ----------
 
-In the [next post](https://github.com/rzezeski/try-try-try/tree/master/2011/riak-core-conflict-resolution) I'll go over how to implement conflict resolution and read repair in the coordinator.
+In the [next post](../riak-core-conflict-resolution) I'll go over how to implement conflict resolution and read repair in the coordinator.
